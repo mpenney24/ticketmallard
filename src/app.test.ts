@@ -1,12 +1,33 @@
-import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert';
-import { buildApp } from './app';
+import { after, before, describe, test } from 'node:test';
 
-describe('Node API Healthcheck', () => {
+import sinon from 'sinon';
+
+import { FIXED_DATE, getJsonResponse, testEvent } from '../test/helpers';
+import buildApp from './app';
+import {
+    EventCreateRequest,
+    EventCreateResponse,
+    eventCreateSchema,
+    EventsGetResponse,
+} from './db/schema';
+
+describe('Node API App', () => {
     let app: Awaited<ReturnType<typeof buildApp>>;
 
+    let clock: sinon.SinonFakeTimers;
+
     before(async () => {
+        clock = sinon.useFakeTimers({
+            now: FIXED_DATE,
+            toFake: ['Date'],
+        });
         app = await buildApp();
+    });
+
+    after(async () => {
+        await app.close();
+        clock.restore();
     });
 
     test('GET /health returns Ok status', async () => {
@@ -22,48 +43,51 @@ describe('Node API Healthcheck', () => {
         });
     });
 
-    after(async () => {
-        await app.close();
-    });
-});
+    describe('Events API Integration Tests', () => {
+        test('GET /api/events returns event list', async () => {
+            const response = await app.inject({
+                method: 'GET',
+                url: '/api/events',
+            });
 
-describe('Events API Integration Tests', () => {
-    let app: Awaited<ReturnType<typeof buildApp>>;
+            assert.strictEqual(response.statusCode, 200);
 
-    before(async () => {
-        app = await buildApp();
-    });
+            const payload = getJsonResponse<EventsGetResponse>(response);
+            assert.ok(Array.isArray(payload.events));
+            assert.equal(payload.events.length, 1);
 
-    test('GET /api/events returns event list', async () => {
-        const response = await app.inject({
-            method: 'GET',
-            url: '/api/events',
+            const event = payload.events[0]!;
+            assert.ok(event.id);
+            assert.ok(event.createdAt);
+
+            assert.deepStrictEqual(eventCreateSchema.parse(event), testEvent);
         });
 
-        assert.strictEqual(response.statusCode, 200);
+        test('POST /api/events creates an event', async () => {
+            const newEvent: EventCreateRequest = eventCreateSchema.parse({
+                title: 'Duck Concert 2026',
+                startTime: new Date('2026-08-30'),
+            });
 
-        const payload = response.json();
-        assert.ok(Array.isArray(payload.events));
-        assert.strictEqual(payload.events[0].title, 'Duck Concert 2026');
-    });
+            const response = await app.inject({
+                method: 'POST',
+                url: '/api/events',
+                payload: newEvent,
+            });
 
-    test('POST /api/events creates an event', async () => {
-        const newEvent = { title: 'Pond Party', date: '2026-08-30' };
+            assert.strictEqual(response.statusCode, 201);
 
-        const response = await app.inject({
-            method: 'POST',
-            url: '/api/events',
-            payload: newEvent,
+            const payload = getJsonResponse<EventCreateResponse>(response);
+            assert.strictEqual(payload.message, 'Event created successfully 🦆');
+
+            const event = payload.event;
+            assert.ok(event.id);
+            assert.ok(event.createdAt);
+
+            assert.deepStrictEqual(
+                eventCreateSchema.parse(event),
+                eventCreateSchema.parse(newEvent)
+            );
         });
-
-        assert.strictEqual(response.statusCode, 201);
-
-        const payload = response.json();
-        assert.strictEqual(payload.message, 'Event created successfully 🦆');
-        assert.deepStrictEqual(payload.event, newEvent);
-    });
-
-    after(async () => {
-        await app.close();
     });
 });

@@ -6,10 +6,10 @@ import unusedImports from 'eslint-plugin-unused-imports';
 
 export default [
     {
-        ignores: ['node_modules/', 'dist/', 'build/'],
+        ignores: ['node_modules/', 'dist/', 'build/', 'drizzle/'],
     },
     {
-        files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
+        files: ['src/**/*.ts*', 'src/**/*.js*', 'test/**/*.ts*', 'test/**/*.js*'],
         languageOptions: {
             parser: tsParser,
             sourceType: 'module',

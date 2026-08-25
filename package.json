@@ -2,15 +2,16 @@
     "name": "ticketmallard",
     "version": "1.0.0",
     "scripts": {
+        "build": "pnpm tsc",
         "dev": "pnpm concurrently --kill-others-on-fail \"pnpm db:start && pnpm dev:server\" \"pnpm db:watch\"",
         "dev:down": "docker compose down -v",
-        "db:start": "docker compose up -d --wait && drizzle-kit migrate && pnpm db:seed",
+        "db:start": "pnpm dev:down && docker compose up -d --wait && drizzle-kit generate && drizzle-kit migrate && pnpm db:seed",
         "db:watch": "chokidar \"src/db/schema.ts\" -c \"drizzle-kit generate && drizzle-kit migrate\"",
         "db:connect": "docker exec -it ticketmallard-postgres psql -U postgres -d ticketmallard",
         "db:tail": "docker logs -f ticketmallard-postgres",
         "db:seed": "pnpm tsx test/db/seed.ts",
         "dev:server": "pnpm tsx watch src/server.ts",
-        "test": "docker compose up -d --wait && drizzle-kit migrate && (node --import tsx --test src/**/*.test.ts; docker compose down -v)",
+        "test": "pnpm db:start && (node --import tsx --test src/**/*.test.ts; pnpm dev:down)",
         "lint": "pnpm eslint . --fix",
         "format": "pnpm prettier --write \".\""
     },
@@ -22,11 +23,14 @@
         "dotenv": "^17.4.2",
         "drizzle-orm": "1.0.0-rc.4",
         "fastify": "^5.12.1",
+        "fastify-type-provider-zod": "^7.0.0",
         "ioredis": "^6.0.0",
-        "postgres": "^3.4.9"
+        "postgres": "^3.4.9",
+        "zod": "^4.4.3"
     },
     "devDependencies": {
         "@types/node": "^26.2.0",
+        "@types/sinon": "^22.0.0",
         "@typescript-eslint/eslint-plugin": "^8.67.0",
         "@typescript-eslint/parser": "^8.67.0",
         "chokidar-cli": "^3.0.0",
@@ -36,7 +40,9 @@
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-simple-import-sort": "^14.0.0",
         "eslint-plugin-unused-imports": "^4.4.1",
+        "light-my-request": "^6.6.0",
         "prettier": "^3.9.6",
+        "sinon": "^22.1.0",
         "tsc-watch": "^7.2.1",
         "tsx": "^4.23.12",
         "typescript": "^6.0.2"

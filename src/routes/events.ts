@@ -1,40 +1,55 @@
-import { FastifyPluginAsync } from 'fastify';
+import { eq } from 'drizzle-orm';
+import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+
 import { db } from '../db';
-// Assuming you have an events table defined in your schema:
-// import { eventsTable } from '../db/schema';
+import { eventCreateSchema, eventGetParamsSchema, tableEvents } from '../db/schema';
 
-const eventRoutes: FastifyPluginAsync = async (fastify) => {
-    // GET /api/events - Fetch all events from Postgres
-    fastify.get('/', async (request, reply) => {
-        try {
-            // Real Drizzle query example:
-            // const allEvents = await db.select().from(eventsTable);
-            // return { events: allEvents };
-
-            return {
-                events: [{ id: 1, title: 'Duck Concert 2026', date: '2026-12-01' }],
-            };
-        } catch (error) {
-            fastify.log.error(error);
-            return reply.status(500).send({ error: 'Failed to fetch events' });
-        }
+const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
+    fastify.get('/', async () => {
+        const events = await db.select().from(tableEvents);
+        return { events };
     });
 
-    // POST /api/events - Create a new event
-    fastify.post('/', async (request, reply) => {
-        const body = request.body as { title: string; date: string };
+    fastify.get(
+        '/:id',
+        {
+            schema: {
+                params: eventGetParamsSchema,
+            },
+        },
+        async (request, reply) => {
+            const { id } = request.params;
 
-        try {
-            // TODO: Insert into Drizzle eventsTable
+            const [event] = await db
+                .select()
+                .from(tableEvents)
+                .where(eq(tableEvents.id, id))
+                .limit(1);
+
+            if (!event) {
+                return reply.status(404).send({ error: 'Event not found 🦆' });
+            }
+
+            return { event };
+        }
+    );
+
+    fastify.post(
+        '/',
+        {
+            schema: {
+                body: eventCreateSchema,
+            },
+        },
+        async (request, reply) => {
+            const [event] = await db.insert(tableEvents).values(request.body).returning();
+
             return reply.status(201).send({
                 message: 'Event created successfully 🦆',
-                event: body,
+                event,
             });
-        } catch (error) {
-            fastify.log.error(error);
-            return reply.status(500).send({ error: 'Failed to create event' });
         }
-    });
+    );
 };
 
 export default eventRoutes;

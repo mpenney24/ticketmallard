@@ -1,11 +1,19 @@
 import fastify from 'fastify';
+import {
+    serializerCompiler,
+    validatorCompiler,
+    ZodTypeProvider,
+} from 'fastify-type-provider-zod';
+
 import { db } from './db/index';
-
-import ticketRoutes from './routes/tickets';
 import eventRoutes from './routes/events';
+import ticketRoutes from './routes/tickets';
 
-export async function buildApp() {
+async function buildServer() {
     const server = fastify({ logger: true });
+
+    server.setValidatorCompiler(validatorCompiler);
+    server.setSerializerCompiler(serializerCompiler);
 
     server.addHook('onClose', async () => {
         await db.$client.end();
@@ -20,3 +28,11 @@ export async function buildApp() {
 
     return server;
 }
+
+async function buildApp() {
+    const app = await buildServer();
+    app.withTypeProvider<ZodTypeProvider>();
+    return app;
+}
+
+export default buildApp;
