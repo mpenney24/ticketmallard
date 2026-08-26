@@ -2,19 +2,38 @@ import { eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import { db } from '../db';
-import { eventCreateSchema, eventGetParamsSchema, tableEvents } from '../db/schema';
+import {
+    eventCreateResponseSchema,
+    eventCreateSchema,
+    eventGetRequestSchema,
+    eventGetResponseSchema,
+    eventsGetRequestSchema,
+    eventsGetResponseSchema,
+    tableEvents,
+} from '../db/schema';
 
 const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
-    fastify.get('/', async () => {
-        const events = await db.select().from(tableEvents);
-        return { events };
-    });
+    fastify.get(
+        '/',
+        {
+            schema: {
+                params: eventsGetRequestSchema,
+                response: { 200: eventsGetResponseSchema },
+            },
+        },
+        async () => {
+            return await db.select().from(tableEvents);
+        }
+    );
 
     fastify.get(
         '/:id',
         {
             schema: {
-                params: eventGetParamsSchema,
+                params: eventGetRequestSchema,
+                response: {
+                    200: eventGetResponseSchema,
+                },
             },
         },
         async (request, reply) => {
@@ -27,10 +46,10 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 .limit(1);
 
             if (!event) {
-                return reply.status(404).send({ error: 'Event not found 🦆' });
+                return reply.notFound();
             }
 
-            return { event };
+            return event;
         }
     );
 
@@ -39,15 +58,15 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
         {
             schema: {
                 body: eventCreateSchema,
+                response: {
+                    201: eventCreateResponseSchema,
+                },
             },
         },
-        async (request, reply) => {
+        async (request) => {
             const [event] = await db.insert(tableEvents).values(request.body).returning();
 
-            return reply.status(201).send({
-                message: 'Event created successfully 🦆',
-                event,
-            });
+            return event;
         }
     );
 };

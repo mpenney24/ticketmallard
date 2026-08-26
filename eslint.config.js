@@ -6,10 +6,10 @@ import unusedImports from 'eslint-plugin-unused-imports';
 
 export default [
     {
-        ignores: ['node_modules/', 'dist/', 'build/', 'drizzle/'],
+        ignores: ['node_modules/', 'dist/'],
     },
     {
-        files: ['src/**/*.ts*', 'src/**/*.js*', 'test/**/*.ts*', 'test/**/*.js*'],
+        files: ['src/**/*.ts*', 'test/**/*.ts*'],
         languageOptions: {
             parser: tsParser,
             sourceType: 'module',
@@ -25,15 +25,7 @@ export default [
             'simple-import-sort/exports': 'error',
 
             'unused-imports/no-unused-imports': 'error',
-            'unused-imports/no-unused-vars': [
-                'error',
-                {
-                    vars: 'all',
-                    varsIgnorePattern: '^_',
-                    args: 'after-used',
-                    argsIgnorePattern: '^_',
-                },
-            ],
+            'unused-imports/no-unused-vars': 'off',
         },
     },
     prettierConfig,

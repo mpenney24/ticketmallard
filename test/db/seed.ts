@@ -1,25 +1,19 @@
 import { db } from '../../src/db/index';
-import { tableEvents, tableTickets, tableUsers } from '../../src/db/schema';
-import { testEvent } from '../helpers';
+import { tableCustomers, tableEvents } from '../../src/db/schema';
+import { createNewEvent } from '../helpers';
 
 async function seed() {
     console.log('🌱 Seeding Ticketmallard database...');
 
-    const user = (
-        await db.insert(tableUsers).values({ email: 'mitch@duckmail.com' }).returning()
-    ).at(0)!;
+    const customers = await db
+        .insert(tableCustomers)
+        .values([{ email: 'mitch@duckmail.com' }, { email: 'zoe@dogmail.com' }])
+        .returning();
 
-    const event = (await db.insert(tableEvents).values(testEvent).returning()).at(0)!;
-
-    const ticketValues = Array.from({ length: 5 }).map(() => ({
-        eventId: event.id,
-        status: 'AVAILABLE' as const,
-    }));
-
-    await db.insert(tableTickets).values(ticketValues);
+    const event = (await db.insert(tableEvents).values(createNewEvent).returning())[0];
 
     console.log('✅ Seed complete!');
-    console.log(`Test User ID: ${user.id}`);
+    console.log(`Test Customers: ${customers[0].email}, ${customers[1].email}`);
     console.log(`Test Event ID: ${event.id}`);
     process.exit(0);
 }
