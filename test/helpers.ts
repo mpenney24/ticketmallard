@@ -1,9 +1,12 @@
 import { InjectOptions } from 'fastify';
 
 import {
+    CustomersGetResponse,
     EventCreateRequest,
     eventCreateSchema,
     EventObject,
+    OrderCreateRequest,
+    OrderObject,
     TICKET_STATUS,
     TicketCreateRequest,
     ticketCreateSchema,
@@ -62,4 +65,23 @@ export const createTestTicket = async (opts?: {
             },
         })
     ).json;
+};
+
+export const createTestOrder = async (payload: OrderCreateRequest) => {
+    return (
+        await typedInject<OrderObject>({
+            method: 'POST',
+            url: '/api/orders',
+            payload,
+        })
+    ).json;
+};
+
+export const getTestCustomer = async (index: number) => {
+    return (
+        await typedInject<CustomersGetResponse>({
+            method: 'GET',
+            url: '/api/customers',
+        })
+    ).json[index];
 };

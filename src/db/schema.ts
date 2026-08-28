@@ -11,12 +11,14 @@ export enum TICKET_STATUS {
 }
 export const ticketStatusEnum = pgEnum('ticket_status', TICKET_STATUS);
 
-export const orderStatusEnum = pgEnum('order_status', [
-    'PENDING',
-    'PAID',
-    'EXPIRED',
-    'FAILED',
-]);
+export enum ORDER_STATUS {
+    PENDING = 'PENDING',
+    EXPIRED = 'EXPIRED',
+    PAID = 'PAID',
+    FAILED = 'FAILED',
+}
+
+export const orderStatusEnum = pgEnum('order_status', ORDER_STATUS);
 
 // TABLES (and ENTITIES)
 
@@ -56,12 +58,39 @@ const order = {
     ticketId: uuid('ticket_id')
         .references(() => tableTickets.id)
         .notNull(),
-    status: orderStatusEnum('status').default('PENDING').notNull(),
+    status: orderStatusEnum('status').default(ORDER_STATUS.PENDING).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 };
 export const tableOrders = pgTable('orders', order);
 
 // TYPES
+
+// - ORDER
+
+// -- CUSTOMER
+
+export const customerObjectSchema = createSelectSchema(tableCustomers);
+export type CustomerObject = z.infer<typeof customerObjectSchema>;
+
+// -- GET/:id
+
+export const customerGetRequestSchema = createSelectSchema(tableCustomers)
+    .pick({ id: true })
+    .extend({
+        id: z.uuid('Customer id format must be uuid'),
+    });
+export type CustomerGetRequest = z.infer<typeof customerGetRequestSchema>;
+
+export const customerGetResponseSchema = customerObjectSchema;
+export type CustomerGetResponse = z.infer<typeof customerGetResponseSchema>;
+
+// -- GET/
+
+export const customersGetRequestSchema = createSelectSchema(tableCustomers).partial();
+export type CustomersGetRequest = z.infer<typeof customersGetRequestSchema>;
+
+export const customersGetResponseSchema = z.array(customerObjectSchema);
+export type CustomersGetResponse = z.infer<typeof customersGetResponseSchema>;
 
 // - EVENT
 
@@ -150,3 +179,35 @@ export type TicketsGetRequest = z.infer<typeof ticketsGetRequestSchema>;
 
 export const ticketsGetResponseSchema = z.array(ticketObjectSchema);
 export type TicketsGetResponse = z.infer<typeof ticketsGetResponseSchema>;
+
+// - ORDER
+
+// -- OBJECT
+
+export const orderObjectSchema = createSelectSchema(tableOrders);
+export type OrderObject = z.infer<typeof orderObjectSchema>;
+
+// -- CREATE
+
+export const orderCreateSchema = createInsertSchema(tableOrders, {
+    status: () => z.enum(ORDER_STATUS).optional(),
+}).omit({
+    id: true,
+    createdAt: true,
+});
+export type OrderCreateRequest = z.infer<typeof orderCreateSchema>;
+
+export const orderCreateResponseSchema = orderObjectSchema;
+export type OrderCreateResponse = z.infer<typeof orderCreateResponseSchema>;
+
+// -- GET/:id
+
+export const orderGetRequestSchema = createSelectSchema(tableOrders)
+    .pick({ id: true })
+    .extend({
+        id: z.uuid('Order id format must be uuid'),
+    });
+export type OrderGetRequest = z.infer<typeof orderGetRequestSchema>;
+
+export const orderGetResponseSchema = orderObjectSchema;
+export type OrderGetResponse = z.infer<typeof orderGetResponseSchema>;

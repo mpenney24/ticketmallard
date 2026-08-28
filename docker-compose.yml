@@ -14,3 +14,15 @@ services:
             interval: 3s
             timeout: 3s
             retries: 5
+
+    redis:
+        image: redis:latest
+        container_name: ticketmallard-redis
+        network_mode: 'host'
+        ports:
+            - '6379:6379'
+        healthcheck:
+            test: ['CMD-SHELL', 'redis-cli', 'ping']
+            interval: 3s
+            timeout: 3s
+            retries: 5

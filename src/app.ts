@@ -7,7 +7,9 @@ import {
 } from 'fastify-type-provider-zod';
 
 import { db } from './db/index';
+import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
+import orderRoutes from './routes/orders';
 import ticketRoutes from './routes/tickets';
 
 async function buildServer() {
@@ -65,8 +67,10 @@ async function buildServer() {
         return { status: 'Ok 🦆' };
     });
 
-    await server.register(ticketRoutes, { prefix: '/api/tickets' });
+    await server.register(customerRoutes, { prefix: '/api/customers' });
     await server.register(eventRoutes, { prefix: '/api/events' });
+    await server.register(ticketRoutes, { prefix: '/api/tickets' });
+    await server.register(orderRoutes, { prefix: '/api/orders' });
 
     return server;
 }
