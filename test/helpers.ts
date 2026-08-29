@@ -2,21 +2,17 @@ import { InjectOptions } from 'fastify';
 
 import {
     CustomersGetResponse,
+    Event,
     EventCreateRequest,
     eventCreateSchema,
-    EventObject,
+    Order,
     OrderCreateRequest,
-    OrderObject,
+    Ticket,
     TICKET_STATUS,
+    TICKET_TYPE,
     TicketCreateRequest,
-    ticketCreateSchema,
-    TicketObject,
 } from '../src/db/schema';
 import { getTestApp } from './setup';
-
-// export function getTypedResponse<T>(response: Response): T {
-//     return response.json as T;
-// }
 
 export async function typedInject<T>(opts: InjectOptions | string) {
     const response = await getTestApp().inject(opts);
@@ -34,15 +30,20 @@ export const createNewEvent: EventCreateRequest = eventCreateSchema.parse({
     startTime: FIXED_DATE,
 });
 
-export const createNewTicket: (event: EventObject) => TicketCreateRequest = (event) =>
-    ticketCreateSchema.parse({
+// Mitch - ticket.service tests for both GQ and SEATED? What about availability?
+export const createNewTicket: (event: Event) => TicketCreateRequest = (event) => {
+    const payload = {
         eventId: event.id,
+        type: TICKET_TYPE.GA,
         status: TICKET_STATUS.AVAILABLE,
-    });
+    } satisfies TicketCreateRequest;
+
+    return payload;
+};
 
 export const createTestEvent = async (payload: EventCreateRequest = createNewEvent) => {
     return (
-        await typedInject<EventObject>({
+        await typedInject<Event>({
             method: 'POST',
             url: '/api/events',
             payload,
@@ -50,26 +51,25 @@ export const createTestEvent = async (payload: EventCreateRequest = createNewEve
     ).json;
 };
 
-export const createTestTicket = async (opts?: {
-    event?: EventObject;
-    payload?: TicketCreateRequest;
-}) => {
-    const ticketEvent = opts?.event || (await createTestEvent());
+export const createTestTicket = async (request?: Partial<TicketCreateRequest>) => {
+    const eventId = request?.eventId || (await createTestEvent()).id;
+    const type = request?.type || TICKET_TYPE.SEATED;
+    const payload: TicketCreateRequest = {
+        eventId,
+        type,
+    };
     return (
-        await typedInject<TicketObject>({
+        await typedInject<Ticket>({
             method: 'POST',
             url: '/api/tickets',
-            payload: {
-                ...opts?.payload,
-                eventId: ticketEvent.id,
-            },
+            payload,
         })
     ).json;
 };
 
 export const createTestOrder = async (payload: OrderCreateRequest) => {
     return (
-        await typedInject<OrderObject>({
+        await typedInject<Order>({
             method: 'POST',
             url: '/api/orders',
             payload,

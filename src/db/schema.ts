@@ -1,4 +1,13 @@
-import { date, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+    date,
+    pgEnum,
+    pgTable,
+    text,
+    timestamp,
+    unique,
+    uuid,
+} from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 import z from 'zod';
 
@@ -10,6 +19,12 @@ export enum TICKET_STATUS {
     SOLD = 'SOLD',
 }
 export const ticketStatusEnum = pgEnum('ticket_status', TICKET_STATUS);
+
+export enum TICKET_TYPE {
+    GA = 'GA',
+    SEATED = 'SEATED',
+}
+export const ticketTypeEnum = pgEnum('ticket_type', TICKET_TYPE);
 
 export enum ORDER_STATUS {
     PENDING = 'PENDING',
@@ -34,7 +49,7 @@ const event = {
     title: text('title').notNull(),
     description: text('description'),
     startTime: timestamp('start_time').notNull(),
-    createdAt: date('created_at').default(new Date().toISOString()),
+    createdAt: date('created_at').default(sql`CURRENT_DATE`),
 };
 export const tableEvents = pgTable('events', event);
 
@@ -43,10 +58,13 @@ const ticket = {
     eventId: uuid('event_id')
         .references(() => tableEvents.id)
         .notNull(),
+    type: ticketTypeEnum('type').notNull(),
     status: ticketStatusEnum('status').default(TICKET_STATUS.AVAILABLE).notNull(),
     reservedBy: uuid('reserved_by').references(() => tableCustomers.id),
     reservedUntil: timestamp('reserved_until'),
-    createdAt: date('created_at').default(new Date().toISOString()).notNull(),
+    createdAt: date('created_at')
+        .default(sql`CURRENT_DATE`)
+        .notNull(),
 };
 export const tableTickets = pgTable('tickets', ticket);
 
@@ -55,13 +73,22 @@ const order = {
     customerId: uuid('customer_id')
         .references(() => tableCustomers.id)
         .notNull(),
-    ticketId: uuid('ticket_id')
-        .references(() => tableTickets.id)
-        .notNull(),
     status: orderStatusEnum('status').default(ORDER_STATUS.PENDING).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 };
 export const tableOrders = pgTable('orders', order);
+
+const orderTicket = {
+    orderId: uuid('order_id')
+        .references(() => tableOrders.id)
+        .notNull(),
+    ticketId: uuid('ticket_id')
+        .references(() => tableTickets.id)
+        .notNull(),
+};
+export const tableOrderTickets = pgTable('order_tickets', orderTicket, (t) => [
+    unique('unique_ticket_order').on(t.ticketId),
+]);
 
 // TYPES
 
@@ -70,15 +97,13 @@ export const tableOrders = pgTable('orders', order);
 // -- CUSTOMER
 
 export const customerObjectSchema = createSelectSchema(tableCustomers);
-export type CustomerObject = z.infer<typeof customerObjectSchema>;
+export type Customer = z.infer<typeof customerObjectSchema>;
 
 // -- GET/:id
 
-export const customerGetRequestSchema = createSelectSchema(tableCustomers)
-    .pick({ id: true })
-    .extend({
-        id: z.uuid('Customer id format must be uuid'),
-    });
+export const customerGetRequestSchema = createSelectSchema(tableCustomers).pick({
+    id: true,
+});
 export type CustomerGetRequest = z.infer<typeof customerGetRequestSchema>;
 
 export const customerGetResponseSchema = customerObjectSchema;
@@ -97,7 +122,7 @@ export type CustomersGetResponse = z.infer<typeof customersGetResponseSchema>;
 // -- OBJECT
 
 export const eventObjectSchema = createSelectSchema(tableEvents);
-export type EventObject = z.infer<typeof eventObjectSchema>;
+export type Event = z.infer<typeof eventObjectSchema>;
 
 // -- CREATE
 
@@ -116,11 +141,7 @@ export type EventCreateResponse = z.infer<typeof eventCreateResponseSchema>;
 
 // -- GET/:id
 
-export const eventGetRequestSchema = createSelectSchema(tableEvents)
-    .pick({ id: true })
-    .extend({
-        id: z.uuid('Event id format must be uuid'),
-    });
+export const eventGetRequestSchema = createSelectSchema(tableEvents).pick({ id: true });
 export type EventGetRequest = z.infer<typeof eventGetRequestSchema>;
 
 export const eventGetResponseSchema = eventObjectSchema;
@@ -139,18 +160,20 @@ export type EventsGetResponse = z.infer<typeof eventsGetResponseSchema>;
 // -- OBJECT
 
 export const ticketObjectSchema = createSelectSchema(tableTickets);
-export type TicketObject = z.infer<typeof ticketObjectSchema>;
+export type Ticket = z.infer<typeof ticketObjectSchema>;
 
 // -- CREATE
 
 export const ticketCreateSchema = createInsertSchema(tableTickets, {
-    reservedUntil: z.coerce.date().nullable().optional(),
+    type: () => z.enum(TICKET_TYPE),
     status: () => z.enum(TICKET_STATUS).optional(),
+    reservedUntil: z.coerce.date().nullable().optional(),
 })
     .omit({
         id: true,
         createdAt: true,
     })
+    // Mitch - remove this, as this should be for ticket update! (done by Redis/Lua script?)
     .refine((data) => Boolean(data.reservedBy) === Boolean(data.reservedUntil), {
         message: 'reservedUntil and reservedBy must either both be set or both be empty',
         path: ['reservedUntil'],
@@ -162,11 +185,7 @@ export type TicketCreateResponse = z.infer<typeof ticketCreateResponseSchema>;
 
 // -- GET/:id
 
-export const ticketGetRequestSchema = createSelectSchema(tableTickets)
-    .pick({ id: true })
-    .extend({
-        id: z.uuid('Ticket id format must be uuid'),
-    });
+export const ticketGetRequestSchema = createSelectSchema(tableTickets).pick({ id: true });
 export type TicketGetRequest = z.infer<typeof ticketGetRequestSchema>;
 
 export const ticketGetResponseSchema = ticketObjectSchema;
@@ -185,16 +204,27 @@ export type TicketsGetResponse = z.infer<typeof ticketsGetResponseSchema>;
 // -- OBJECT
 
 export const orderObjectSchema = createSelectSchema(tableOrders);
-export type OrderObject = z.infer<typeof orderObjectSchema>;
+export type Order = z.infer<typeof orderObjectSchema>;
 
 // -- CREATE
 
 export const orderCreateSchema = createInsertSchema(tableOrders, {
     status: () => z.enum(ORDER_STATUS).optional(),
-}).omit({
-    id: true,
-    createdAt: true,
-});
+})
+    .omit({
+        id: true,
+        createdAt: true,
+    })
+    .extend({
+        eventId: z.uuid('Event id format must be uuid'),
+        gaQuantity: z.number().int().nonnegative().default(0),
+        ticketIds: z.array(z.uuid('Ticket id format must be uuid')).default([]),
+    })
+    .refine((data) => data.gaQuantity > 0 || data.ticketIds.length > 0, {
+        message:
+            'Cart must contain a number of general admission tickets, or seated ticket ids, or both',
+    });
+
 export type OrderCreateRequest = z.infer<typeof orderCreateSchema>;
 
 export const orderCreateResponseSchema = orderObjectSchema;
@@ -202,12 +232,20 @@ export type OrderCreateResponse = z.infer<typeof orderCreateResponseSchema>;
 
 // -- GET/:id
 
-export const orderGetRequestSchema = createSelectSchema(tableOrders)
-    .pick({ id: true })
-    .extend({
-        id: z.uuid('Order id format must be uuid'),
-    });
+export const orderGetRequestSchema = createSelectSchema(tableOrders).pick({ id: true });
 export type OrderGetRequest = z.infer<typeof orderGetRequestSchema>;
 
 export const orderGetResponseSchema = orderObjectSchema;
 export type OrderGetResponse = z.infer<typeof orderGetResponseSchema>;
+
+// - ORDER_TICKET
+
+// -- OBJECT
+
+export const orderTicketObjectSchema = createSelectSchema(tableOrderTickets);
+export type OrderTicket = z.infer<typeof orderTicketObjectSchema>;
+
+// -- CREATE
+
+export const orderTicketCreateRequestSchema = createSelectSchema(tableOrderTickets);
+export type OrderTicketCreateRequest = z.infer<typeof orderTicketCreateRequestSchema>;

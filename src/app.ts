@@ -7,6 +7,7 @@ import {
 } from 'fastify-type-provider-zod';
 
 import { db } from './db/index';
+import { DomainError } from './errors/domain.errors';
 import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
 import orderRoutes from './routes/orders';
@@ -61,6 +62,18 @@ async function buildServer() {
 
     server.addHook('onClose', async () => {
         await db.$client.end();
+    });
+
+    server.setErrorHandler((error, request, reply) => {
+        if (error instanceof DomainError) {
+            return reply.code(error.statusCode).send({
+                error: error.name,
+                message: error.message,
+            });
+        }
+
+        request.log.error(error);
+        throw error;
     });
 
     server.get('/health', async () => {

@@ -1,15 +1,13 @@
-import { eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
-import { db } from '../db';
-import { redis } from '../db/redis';
 import {
     orderCreateResponseSchema,
     orderCreateSchema,
     orderGetRequestSchema,
     orderGetResponseSchema,
-    tableOrders,
 } from '../db/schema';
+import { idempotencyHook } from '../hooks/idempotency.hook';
+import { createOrder, getOrder } from '../services/order.services';
 
 const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(
@@ -22,20 +20,8 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 },
             },
         },
-        async (request, reply) => {
-            const { id } = request.params;
-
-            const [order] = await db
-                .select()
-                .from(tableOrders)
-                .where(eq(tableOrders.id, id))
-                .limit(1);
-
-            if (!order) {
-                return reply.notFound();
-            }
-
-            return order;
+        async (request) => {
+            return await getOrder(request.params);
         }
     );
 
@@ -48,20 +34,13 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
                     201: orderCreateResponseSchema,
                 },
             },
+            preHandler: [idempotencyHook],
         },
-        async (request, reply) => {
-            const { ticketId } = request.body;
-            const inventoryKey = `inventory:ticket:${ticketId}`;
-
-            const result = await redis.reserveTicket(inventoryKey);
-
-            if (result === 0) {
-                return reply.conflict('Sold Out');
-            }
-
-            const [order] = await db.insert(tableOrders).values(request.body).returning();
-
-            return order;
+        async (request) => {
+            return await createOrder(
+                request.body,
+                request.headers['idempotency-key'] as string
+            );
         }
     );
 };

@@ -1,9 +1,6 @@
-import { eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
-import { db } from '../db';
 import {
-    tableTickets,
     ticketCreateResponseSchema,
     ticketCreateSchema,
     ticketGetRequestSchema,
@@ -11,6 +8,7 @@ import {
     ticketsGetRequestSchema,
     ticketsGetResponseSchema,
 } from '../db/schema';
+import { createTicket, getTicket, getTickets } from '../services/ticket.service';
 
 const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(
@@ -21,8 +19,8 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: ticketsGetResponseSchema },
             },
         },
-        async () => {
-            return await db.select().from(tableTickets);
+        async (request) => {
+            return await getTickets(request.params);
         }
     );
 
@@ -34,20 +32,8 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: ticketGetResponseSchema },
             },
         },
-        async (request, reply) => {
-            const { id } = request.params;
-
-            const [ticket] = await db
-                .select()
-                .from(tableTickets)
-                .where(eq(tableTickets.id, id))
-                .limit(1);
-
-            if (!ticket) {
-                return reply.notFound();
-            }
-
-            return ticket;
+        async (request) => {
+            return await getTicket(request.params);
         }
     );
 
@@ -60,12 +46,7 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
             },
         },
         async (request) => {
-            const [ticket] = await db
-                .insert(tableTickets)
-                .values(request.body)
-                .returning();
-
-            return ticket;
+            return await createTicket(request.body);
         }
     );
 };

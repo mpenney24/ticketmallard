@@ -3,7 +3,7 @@ import { after, before } from 'node:test';
 import sinon from 'sinon';
 
 import buildApp from '../src/app';
-import { redis } from '../src/db/redis';
+import * as redis from '../src/utils/redis';
 import { FIXED_DATE } from './helpers';
 
 let testApp: Awaited<ReturnType<typeof buildApp>>;
