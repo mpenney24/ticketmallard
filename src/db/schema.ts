@@ -8,7 +8,11 @@ import {
     unique,
     uuid,
 } from 'drizzle-orm/pg-core';
-import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
+import {
+    createInsertSchema,
+    createSelectSchema,
+    createUpdateSchema,
+} from 'drizzle-orm/zod';
 import z from 'zod';
 
 // ENUMS
@@ -18,7 +22,6 @@ export enum TICKET_STATUS {
     RESERVED = 'RESERVED',
     SOLD = 'SOLD',
 }
-export const ticketStatusEnum = pgEnum('ticket_status', TICKET_STATUS);
 
 export enum TICKET_TYPE {
     GA = 'GA',
@@ -59,9 +62,6 @@ const ticket = {
         .references(() => tableEvents.id)
         .notNull(),
     type: ticketTypeEnum('type').notNull(),
-    status: ticketStatusEnum('status').default(TICKET_STATUS.AVAILABLE).notNull(),
-    reservedBy: uuid('reserved_by').references(() => tableCustomers.id),
-    reservedUntil: timestamp('reserved_until'),
     createdAt: date('created_at')
         .default(sql`CURRENT_DATE`)
         .notNull(),
@@ -75,6 +75,7 @@ const order = {
         .notNull(),
     status: orderStatusEnum('status').default(ORDER_STATUS.PENDING).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').$onUpdate(() => sql`CURRENT_DATE`),
 };
 export const tableOrders = pgTable('orders', order);
 
@@ -166,18 +167,10 @@ export type Ticket = z.infer<typeof ticketObjectSchema>;
 
 export const ticketCreateSchema = createInsertSchema(tableTickets, {
     type: () => z.enum(TICKET_TYPE),
-    status: () => z.enum(TICKET_STATUS).optional(),
-    reservedUntil: z.coerce.date().nullable().optional(),
-})
-    .omit({
-        id: true,
-        createdAt: true,
-    })
-    // Mitch - remove this, as this should be for ticket update! (done by Redis/Lua script?)
-    .refine((data) => Boolean(data.reservedBy) === Boolean(data.reservedUntil), {
-        message: 'reservedUntil and reservedBy must either both be set or both be empty',
-        path: ['reservedUntil'],
-    });
+}).omit({
+    id: true,
+    createdAt: true,
+});
 export type TicketCreateRequest = z.infer<typeof ticketCreateSchema>;
 
 export const ticketCreateResponseSchema = ticketObjectSchema;
@@ -208,27 +201,76 @@ export type Order = z.infer<typeof orderObjectSchema>;
 
 // -- CREATE
 
-export const orderCreateSchema = createInsertSchema(tableOrders, {
-    status: () => z.enum(ORDER_STATUS).optional(),
-})
+const orderItemSchema = z.object({
+    eventId: z.uuid('Event id format must be uuid'),
+    gaTicketQuantity: z.number().int().nonnegative().default(0),
+    seatedTicketIds: z.array(z.uuid('Ticket id format must be uuid')).default([]),
+});
+
+export type OrderItem = z.infer<typeof orderItemSchema>;
+
+export const orderItemsReservedByEvent = orderItemSchema
+    .omit({ gaTicketQuantity: true, seatedTicketIds: true })
+    .extend({
+        orderTicketIds: z.array(z.uuid('Ticket id format must be uuid')).default([]),
+    });
+export type OrderItemsReservedByEvent = z.infer<typeof orderItemsReservedByEvent>;
+
+export const orderCreateSchema = createInsertSchema(tableOrders)
     .omit({
         id: true,
+        status: true,
         createdAt: true,
+        updatedAt: true,
     })
     .extend({
-        eventId: z.uuid('Event id format must be uuid'),
-        gaQuantity: z.number().int().nonnegative().default(0),
-        ticketIds: z.array(z.uuid('Ticket id format must be uuid')).default([]),
-    })
-    .refine((data) => data.gaQuantity > 0 || data.ticketIds.length > 0, {
-        message:
-            'Cart must contain a number of general admission tickets, or seated ticket ids, or both',
+        orderItems: z
+            .array(orderItemSchema)
+            .min(1, 'Order must contain tickets for at least one event'),
     });
-
 export type OrderCreateRequest = z.infer<typeof orderCreateSchema>;
 
 export const orderCreateResponseSchema = orderObjectSchema;
 export type OrderCreateResponse = z.infer<typeof orderCreateResponseSchema>;
+
+// -- UPDATE
+
+export const orderUpdateSchema = createUpdateSchema(tableOrders, {
+    status: () => z.enum(ORDER_STATUS),
+})
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+        customerId: true,
+    })
+    .required();
+export type OrderUpdateRequest = z.infer<typeof orderUpdateSchema>;
+
+export const orderUpdateResponseSchema = orderObjectSchema.extend({
+    updatedAt: z.date(),
+});
+export type OrderUpdateResponse = z.infer<typeof orderUpdateResponseSchema>;
+
+// -- EXPIRE
+
+export const orderExpireSchema = createUpdateSchema(tableOrders, {
+    status: () => z.literal(ORDER_STATUS.EXPIRED).default(ORDER_STATUS.EXPIRED),
+})
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+        customerId: true,
+    })
+    .extend({
+        orderItems: z.array(orderItemsReservedByEvent).nonempty(),
+    })
+    .required();
+export type OrderExpireRequest = z.infer<typeof orderExpireSchema>;
+
+export const orderExpireResponseSchema = orderObjectSchema.extend({
+    updatedAt: z.date(),
+});
+export type OrderExpireResponse = z.infer<typeof orderExpireResponseSchema>;
 
 // -- GET/:id
 

@@ -1,17 +1,23 @@
 import Redis from 'ioredis';
 
+import {
+    ReservationError,
+    SoldOutError,
+    UnavailableError,
+} from '../errors/domain.errors';
+
 export interface CachedData {
     statusCode: number;
     body: unknown;
 }
 
-type LUA_ERROR_CODES = 'SEAT_UNAVAILABLE' | 'GA_SOLD_OUT';
-
-export interface ReservationResult {
+interface ReservationResult {
     success: boolean;
-    code?: LUA_ERROR_CODES;
-    ticketId?: string;
-    data?: string[];
+    data: string[];
+}
+
+interface ReleaseResult {
+    success: boolean;
 }
 
 export const CacheKeys = {
@@ -44,7 +50,7 @@ redis.defineCommand('reserveMixedCart', {
 
         local acquiredIds = {}
 
-        -- 1. Process GA tickets from the Set
+        -- 1. Process GA tickets
         if gaQty > 0 then
             local currentAvailable = redis.call('scard', gaPoolKey)
             
@@ -92,6 +98,60 @@ export async function reserveMixedCart(
         eventId,
         gaQuantity,
         ...seatedTicketIds
+    );
+
+    const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+
+    if (!result.success) {
+        if (result.code === 'SEAT_UNAVAILABLE')
+            throw new UnavailableError(
+                'Ticket',
+                `Seated ticket id ${result.ticketId} is taken`
+            );
+        if (result.code === 'GA_SOLD_OUT')
+            throw new SoldOutError(`General admission pool for ${eventId} sold out`);
+        throw new ReservationError(`Inventory reservation failed for ${eventId}`);
+    }
+
+    return result;
+}
+
+redis.defineCommand('releaseMixedCart', {
+    numberOfKeys: 1,
+    lua: `
+        local gaPoolKey = KEYS[1]
+        local eventId = ARGV[1]
+        
+        for i = 2, #ARGV do
+            local ticketId = ARGV[i]
+            local seatKey = "{event:" .. eventId .. "}:seat:" .. ticketId
+            
+            -- 1. Check if this ticket ID matches a seated ticket key pattern
+            local seatExists = redis.call('exists', seatKey)
+            
+            if seatExists == 1 then
+                redis.call('set', seatKey, "AVAILABLE")
+            else
+                -- 2. Otherwise, return it to GA pool
+                redis.call('sadd', gaPoolKey, ticketId)
+            end
+        end
+        
+        return cjson.encode({ success = true })
+    `,
+});
+
+export async function releaseMixedCart(
+    eventId: string,
+    orderTicketIds: string[]
+): Promise<ReservationResult> {
+    const gaPoolKey = CacheKeys.gaPool(eventId);
+
+    // @ts-ignore - ioredis dynamic command typing
+    const rawResult: string = await redis.releaseMixedCart(
+        gaPoolKey,
+        eventId,
+        ...orderTicketIds
     );
 
     return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;

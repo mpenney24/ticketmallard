@@ -11,6 +11,7 @@ import { DomainError } from './errors/domain.errors';
 import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
 import orderRoutes from './routes/orders';
+import orderExpireRoutes from './routes/orders.expire';
 import ticketRoutes from './routes/tickets';
 
 async function buildServer() {
@@ -84,6 +85,7 @@ async function buildServer() {
     await server.register(eventRoutes, { prefix: '/api/events' });
     await server.register(ticketRoutes, { prefix: '/api/tickets' });
     await server.register(orderRoutes, { prefix: '/api/orders' });
+    await server.register(orderExpireRoutes, { prefix: '/api/orders/expire' });
 
     return server;
 }

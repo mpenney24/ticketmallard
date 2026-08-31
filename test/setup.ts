@@ -14,11 +14,16 @@ before(async () => {
         toFake: ['Date'],
     });
     testApp = await buildApp();
+    await testApp.listen({ port: 0, host: '127.0.0.1' });
+
+    const address = testApp.server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 3000;
+    process.env.APP_URL = `http://127.0.0.1:${port}`;
 });
 
 after(async () => {
     sinon.restore();
-    testApp.close();
+    await testApp.close();
     await redis.quit();
 });
 

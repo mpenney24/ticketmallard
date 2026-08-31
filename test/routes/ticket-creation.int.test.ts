@@ -24,7 +24,6 @@ describe('Tickets API Integration Tests', () => {
         assert.ok(ticket.id);
         assert.ok(ticket.eventId);
         assert.ok(ticket.createdAt);
-        assert.ok(ticket.status);
 
         const getPayload: TicketGetRequest = {
             id: ticket.id,

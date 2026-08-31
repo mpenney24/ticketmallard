@@ -8,7 +8,6 @@ import {
     Order,
     OrderCreateRequest,
     Ticket,
-    TICKET_STATUS,
     TICKET_TYPE,
     TicketCreateRequest,
 } from '../src/db/schema';
@@ -30,12 +29,10 @@ export const createNewEvent: EventCreateRequest = eventCreateSchema.parse({
     startTime: FIXED_DATE,
 });
 
-// Mitch - ticket.service tests for both GQ and SEATED? What about availability?
 export const createNewTicket: (event: Event) => TicketCreateRequest = (event) => {
     const payload = {
         eventId: event.id,
         type: TICKET_TYPE.GA,
-        status: TICKET_STATUS.AVAILABLE,
     } satisfies TicketCreateRequest;
 
     return payload;
