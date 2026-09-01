@@ -11,7 +11,9 @@ import { DomainError } from './errors/domain.errors';
 import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
 import orderRoutes from './routes/orders';
+import orderCompleteRoutes from './routes/orders.complete';
 import orderExpireRoutes from './routes/orders.expire';
+import orderPayRoutes from './routes/orders.pay';
 import ticketRoutes from './routes/tickets';
 
 async function buildServer() {
@@ -41,8 +43,9 @@ async function buildServer() {
             },
         },
     });
+    // allow easy HTTP requests/responses
     await server.register(sensible);
-
+    // allow ZOD schema parsing
     server.setValidatorCompiler(validatorCompiler);
     server.setSerializerCompiler(serializerCompiler);
 
@@ -81,11 +84,14 @@ async function buildServer() {
         return { status: 'Ok 🦆' };
     });
 
+    // Mitch - autoroute these?
     await server.register(customerRoutes, { prefix: '/api/customers' });
     await server.register(eventRoutes, { prefix: '/api/events' });
     await server.register(ticketRoutes, { prefix: '/api/tickets' });
     await server.register(orderRoutes, { prefix: '/api/orders' });
     await server.register(orderExpireRoutes, { prefix: '/api/orders/expire' });
+    await server.register(orderPayRoutes, { prefix: '/api/orders/pay' });
+    await server.register(orderCompleteRoutes, { prefix: '/api/orders/complete' });
 
     return server;
 }

@@ -157,6 +157,47 @@ export async function releaseMixedCart(
     return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
 }
 
+redis.defineCommand('markTicketsAsSold', {
+    numberOfKeys: 1,
+    lua: `
+        local gaPoolKey = KEYS[1]
+        local eventId = ARGV[1]
+        
+        for i = 2, #ARGV do
+            local ticketId = ARGV[i]
+            local seatKey = "{event:" .. eventId .. "}:seat:" .. ticketId
+            
+            -- 1. Check if this ticket ID matches a seated ticket key pattern
+            local currentStatus = redis.call('get', seatKey)
+            
+            if currentStatus == "RESERVED" then
+                redis.call('set', seatKey, "SOLD")
+            end
+            
+            -- 2. GA tickets were already popped from gaPoolKey during
+            --    reserveMixedCart, so they are already out of inventory
+        end
+        
+        return cjson.encode({ success = true })
+    `,
+});
+
+export async function markTicketsAsSold(
+    eventId: string,
+    orderTicketIds: string[]
+): Promise<{ success: boolean }> {
+    const gaPoolKey = CacheKeys.gaPool(eventId);
+
+    // @ts-ignore - ioredis dynamic command typing
+    const rawResult: string = await redis.markTicketsAsSold(
+        gaPoolKey,
+        eventId,
+        ...orderTicketIds
+    );
+
+    return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+}
+
 export async function setByKey(key: CacheKey, value: string | Buffer | number) {
     await redis.set(key, value);
 }

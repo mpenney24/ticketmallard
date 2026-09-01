@@ -10,7 +10,7 @@ import {
     eventsGetRequestSchema,
     eventsGetResponseSchema,
     tableEvents,
-} from '../db/schema';
+} from '../db/schemas/event-schema.db';
 
 const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(

@@ -7,7 +7,7 @@ import {
     ticketGetResponseSchema,
     ticketsGetRequestSchema,
     ticketsGetResponseSchema,
-} from '../db/schema';
+} from '../db/schemas/ticket-schema.db';
 import { createTicket, getTicket, getTickets } from '../services/ticket.service';
 
 const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {

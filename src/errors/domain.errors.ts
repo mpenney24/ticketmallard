@@ -37,3 +37,11 @@ export class ReservationError extends DomainError {
         super(message, ReservationError.name);
     }
 }
+
+export class HTTPSignatureError extends DomainError {
+    readonly statusCode = 401;
+
+    constructor(header: string, message = `Missing ${header} HTTP Signature`) {
+        super(message, HTTPSignatureError.name);
+    }
+}

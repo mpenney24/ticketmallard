@@ -5,7 +5,7 @@ import {
     orderCreateSchema,
     orderGetRequestSchema,
     orderGetResponseSchema,
-} from '../db/schema';
+} from '../db/schemas/order-schema.db';
 import { idempotencyHook } from '../hooks/idempotency.hook';
 import { createOrder, getOrder } from '../services/order.services';
 
@@ -37,10 +37,9 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
             preHandler: [idempotencyHook],
         },
         async (request) => {
-            return await createOrder(
-                request.body,
-                request.headers['idempotency-key'] as string
-            );
+            return await createOrder(request.body, {
+                idempotencyKey: request.headers['idempotency-key'] as string,
+            });
         }
     );
 };

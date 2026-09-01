@@ -1,16 +1,17 @@
 import { InjectOptions } from 'fastify';
 
+import { CustomersGetResponse } from '../src/db/schemas/customer-schema.db';
 import {
-    CustomersGetResponse,
     Event,
     EventCreateRequest,
     eventCreateSchema,
-    Order,
-    OrderCreateRequest,
+} from '../src/db/schemas/event-schema.db';
+import { Order, OrderCreateRequest } from '../src/db/schemas/order-schema.db';
+import {
     Ticket,
     TICKET_TYPE,
     TicketCreateRequest,
-} from '../src/db/schema';
+} from '../src/db/schemas/ticket-schema.db';
 import { getTestApp } from './setup';
 
 export async function typedInject<T>(opts: InjectOptions | string) {
@@ -23,6 +24,23 @@ export async function typedInject<T>(opts: InjectOptions | string) {
 
 export const FIXED_DATE = new Date('2026-09-01T12:00:00Z');
 export const UNKNOWN_UUID = '00000000-0000-0000-0000-000000000000';
+
+export async function waitUntil(
+    condition: () => Promise<boolean>,
+    timeoutMs = 5000,
+    intervalMs = 1000
+): Promise<void> {
+    const start = performance.now();
+    console.log('Starting wait for callback:');
+
+    while (performance.now() - start < timeoutMs) {
+        if (await condition()) return;
+        console.log('Waiting...');
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('Condition timed out');
+}
 
 export const createNewEvent: EventCreateRequest = eventCreateSchema.parse({
     title: 'Duck Concert 2026',

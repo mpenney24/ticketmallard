@@ -1,5 +1,6 @@
 import { db } from '../../src/db/index';
-import { tableCustomers, tableEvents } from '../../src/db/schema';
+import { tableCustomers } from '../../src/db/schemas/customer-schema.db';
+import { tableEvents } from '../../src/db/schemas/event-schema.db';
 import { createNewEvent } from '../helpers';
 
 async function seed() {

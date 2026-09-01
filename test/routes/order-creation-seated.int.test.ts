@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { describe, test } from 'node:test';
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db } from '../../src/db';
 import {
@@ -9,10 +9,12 @@ import {
     OrderCreateRequest,
     OrderGetRequest,
     OrderGetResponse,
+} from '../../src/db/schemas/order-schema.db';
+import {
     OrderTicket,
     tableOrderTickets,
-    TICKET_STATUS,
-} from '../../src/db/schema';
+} from '../../src/db/schemas/order-ticket-schema.db';
+import { TICKET_STATUS } from '../../src/db/schemas/ticket-schema.db';
 import { ReservationError } from '../../src/errors/domain.errors';
 import * as redis from '../../src/utils/redis';
 import {
@@ -57,12 +59,7 @@ describe('Orders API Integration Tests', () => {
         const orderTickets: OrderTicket[] = await db
             .select()
             .from(tableOrderTickets)
-            .where(
-                and(
-                    eq(tableOrderTickets.orderId, order.id),
-                    inArray(tableOrderTickets.ticketId, [ticket.id])
-                )
-            );
+            .where(eq(tableOrderTickets.orderId, order.id));
 
         assert.ok(orderTickets);
         assert.strictEqual(orderTickets.length, 1);
@@ -173,7 +170,7 @@ describe('Orders API Integration Tests', () => {
         const orderTickets: OrderTicket[] = await db
             .select()
             .from(tableOrderTickets)
-            .where(and(eq(tableOrderTickets.orderId, successes[0].json.id)));
+            .where(eq(tableOrderTickets.orderId, successes[0].json.id));
 
         assert.ok(orderTickets);
         assert.strictEqual(orderTickets.length, 1);

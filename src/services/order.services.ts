@@ -1,25 +1,38 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, SQL } from 'drizzle-orm';
 
 import { db } from '../db';
 import {
     ORDER_STATUS,
+    OrderCompleteWebhookRequest,
+    OrderCompleteWebhookResponse,
     OrderCreateRequest,
-    OrderExpireRequest,
+    OrderCreateResponse,
+    OrderExpireWebhookRequest,
+    OrderExpireWebhookResponse,
     OrderGetRequest,
     OrderItem,
     OrderItemsReservedByEvent,
-    OrderTicketCreateRequest,
+    OrderPayRequest,
+    OrderPayResponse,
     OrderUpdateRequest,
     OrderUpdateResponse,
     orderUpdateResponseSchema,
     tableOrders,
+} from '../db/schemas/order-schema.db';
+import {
+    OrderTicketCreateRequest,
     tableOrderTickets,
-} from '../db/schema';
+} from '../db/schemas/order-ticket-schema.db';
+import { tableTickets } from '../db/schemas/ticket-schema.db';
 import { NotFoundError } from '../errors/domain.errors';
 import { getQstash } from '../utils/qstash';
 import * as redis from '../utils/redis';
 
-const appUrl = process.env.APP_URL || 'http://127.0.0.1:3000';
+interface OrderOptions {
+    idempotencyKey?: string;
+    extraConditions?: SQL[];
+    extraInsertions?: [{}];
+}
 
 export async function getOrder(request: OrderGetRequest) {
     const { id } = request;
@@ -37,7 +50,11 @@ export async function getOrder(request: OrderGetRequest) {
     return order;
 }
 
-export async function createOrder(request: OrderCreateRequest, idempotencyKey?: string) {
+export async function createOrder(
+    request: OrderCreateRequest,
+    opts?: OrderOptions
+): Promise<OrderCreateResponse> {
+    const { customerId } = request;
     const orderItems: OrderItemsReservedByEvent[] = await reserveOrderItemsViaRedis(
         request.orderItems
     );
@@ -46,8 +63,8 @@ export async function createOrder(request: OrderCreateRequest, idempotencyKey?: 
         const [newOrder] = await tx
             .insert(tableOrders)
             .values({
-                customerId: request.customerId,
-                status: ORDER_STATUS.PENDING,
+                customerId,
+                ...opts?.extraInsertions,
             })
             .returning();
 
@@ -63,46 +80,44 @@ export async function createOrder(request: OrderCreateRequest, idempotencyKey?: 
         return newOrder;
     });
 
-    const expireOrderPayload: OrderExpireRequest = {
+    const expireOrderPayload: OrderExpireWebhookRequest = {
         id: order.id,
         status: ORDER_STATUS.EXPIRED,
         orderItems,
     };
 
-    try {
-        console.log('Attempting to publish to QStash...');
-        const res = await getQstash().publishJSON({
-            url: `${process.env.APP_URL}/api/orders/expire`,
-            body: expireOrderPayload,
-            delay: 1,
-        });
-        console.log('Successfully published to QStash:', res);
-    } catch (error) {
-        console.error('FAILED TO PUBLISH TO QSTASH:', error);
-    }
+    await getQstash().publishJSON({
+        url: `${process.env.APP_URL}/api/orders/expire`,
+        body: expireOrderPayload,
+        delay: 1,
+    });
 
-    if (idempotencyKey) {
-        await redis.setIdempotency(idempotencyKey, { statusCode: 201, body: order });
+    if (opts?.idempotencyKey) {
+        await redis.setIdempotency(opts.idempotencyKey, { statusCode: 201, body: order });
     }
 
     return order;
 }
 
-export async function updateOrder(request: OrderUpdateRequest, idempotencyKey?: string) {
+export async function updateOrder(
+    request: OrderUpdateRequest,
+    opts?: OrderOptions
+): Promise<OrderUpdateResponse> {
     const { id, status } = request;
+    const conditions: SQL[] = [eq(tableOrders.id, id), ...(opts?.extraConditions || [])];
 
     const updatedOrder: OrderUpdateResponse = await db.transaction(async (tx) => {
         const [updated] = await tx
             .update(tableOrders)
             .set({ status, updatedAt: new Date() })
-            .where(eq(tableOrders.id, id))
+            .where(and(...conditions))
             .returning();
 
         return orderUpdateResponseSchema.parse(updated);
     });
 
-    if (idempotencyKey) {
-        await redis.setIdempotency(idempotencyKey, {
+    if (opts?.idempotencyKey) {
+        await redis.setIdempotency(opts.idempotencyKey, {
             statusCode: 201,
             body: updatedOrder,
         });
@@ -111,18 +126,83 @@ export async function updateOrder(request: OrderUpdateRequest, idempotencyKey?: 
     return updatedOrder;
 }
 
-export async function expireOrder(request: OrderExpireRequest) {
+export async function expireOrder(
+    request: OrderExpireWebhookRequest
+): Promise<OrderExpireWebhookResponse> {
     const { id, status, orderItems } = request;
 
-    const updatedOrder = await updateOrder({ id, status });
+    const extraConditions: SQL[] = [eq(tableOrders.status, ORDER_STATUS.PENDING)];
 
-    await db
-        .delete(tableOrderTickets)
-        .where(eq(tableOrderTickets.orderId, updatedOrder.id));
+    try {
+        const updatedOrder = await updateOrder({ id, status }, { extraConditions });
 
-    await releaseOrderItemsViaRedis(orderItems);
+        await db
+            .delete(tableOrderTickets)
+            .where(eq(tableOrderTickets.orderId, updatedOrder.id));
 
-    return updatedOrder;
+        await releaseOrderItemsViaRedis(orderItems);
+
+        return updatedOrder;
+    } catch (error) {
+        return {
+            success: false,
+            message: `Could not expire order id ${id}. This may be due to race conditions. Investigate the order and orderTickets tables to confirm`,
+        };
+    }
+}
+
+export async function payOrder(
+    request: OrderPayRequest,
+    opts: OrderOptions
+): Promise<OrderPayResponse> {
+    const { id, status } = request;
+
+    const extraConditions: SQL[] = [eq(tableOrders.status, ORDER_STATUS.PENDING)];
+
+    try {
+        const updatedOrder = await updateOrder(
+            { id, status },
+            { ...opts, extraConditions }
+        );
+
+        await getQstash().publishJSON({
+            url: `${process.env.APP_URL}/api/orders/complete`,
+            body: { id: updatedOrder.id },
+        });
+
+        return updatedOrder;
+    } catch (error) {
+        return {
+            success: false,
+            message: `Could not pay order id ${id}. The order may have expired. Investigate the order table to confirm`,
+        };
+    }
+}
+
+export async function completeOrder(
+    request: OrderCompleteWebhookRequest
+): Promise<OrderCompleteWebhookResponse> {
+    const { id } = request;
+
+    const orderTickets = await db
+        .select({
+            ticketId: tableOrderTickets.ticketId,
+            eventId: tableTickets.eventId,
+        })
+        .from(tableOrderTickets)
+        .innerJoin(tableTickets, eq(tableOrderTickets.ticketId, tableTickets.id))
+        .where(eq(tableOrderTickets.orderId, id));
+
+    const ticketIdsByEvent = new Map<string, string[]>();
+    for (const item of orderTickets) {
+        const list = ticketIdsByEvent.get(item.eventId) || [];
+        list.push(item.ticketId);
+        ticketIdsByEvent.set(item.eventId, list);
+    }
+
+    await markOrderItemsAsSoldViaRedis(ticketIdsByEvent);
+
+    return { success: true };
 }
 
 async function reserveOrderItemsViaRedis(orderItems: OrderItem[]) {
@@ -142,7 +222,7 @@ async function reserveOrderItemsViaRedis(orderItems: OrderItem[]) {
                 eventId: item.eventId,
                 orderTicketIds,
             });
-        } catch (error: any) {
+        } catch (error) {
             await releaseOrderItemsViaRedis(orderItemsByEvent);
             throw error;
         }
@@ -155,4 +235,12 @@ async function releaseOrderItemsViaRedis(orderItemsByEvent: OrderItemsReservedBy
     for (const item of orderItemsByEvent) {
         await redis.releaseMixedCart(item.eventId, item.orderTicketIds);
     }
+}
+
+async function markOrderItemsAsSoldViaRedis(ticketIdsByEvent: Map<string, string[]>) {
+    await Promise.all(
+        Array.from(ticketIdsByEvent.entries()).map(([eventId, ticketIds]) =>
+            redis.markTicketsAsSold(eventId, ticketIds)
+        )
+    );
 }

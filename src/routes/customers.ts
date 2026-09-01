@@ -8,7 +8,7 @@ import {
     customersGetRequestSchema,
     customersGetResponseSchema,
     tableCustomers,
-} from '../db/schema';
+} from '../db/schemas/customer-schema.db';
 
 const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(

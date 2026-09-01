@@ -1,7 +1,10 @@
 import assert from 'node:assert';
 import { describe, test } from 'node:test';
 
-import { eventCreateSchema, EventsGetResponse } from '../../src/db/schema';
+import {
+    eventCreateSchema,
+    EventsGetResponse,
+} from '../../src/db/schemas/event-schema.db';
 import { createNewEvent, typedInject, UNKNOWN_UUID } from '../helpers';
 
 describe('Events API Integration Tests', () => {

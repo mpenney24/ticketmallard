@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { describe, test } from 'node:test';
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db } from '../../src/db';
 import {
@@ -16,7 +16,7 @@ import {
     OrderTicket,
     tableOrderTickets,
 } from '../../src/db/schemas/order-ticket-schema.db';
-import { TICKET_STATUS } from '../../src/db/schemas/ticket-schema.db';
+import { TICKET_TYPE } from '../../src/db/schemas/ticket-schema.db';
 import * as redis from '../../src/utils/redis';
 import {
     createTestEvent,
@@ -27,21 +27,24 @@ import {
 } from '../helpers';
 
 describe('Orders API Integration Tests', () => {
-    test('POST /api/orders/expire expires an order for an existing event and returns the selected seated ticket to Redis', async () => {
+    test('POST /api/orders/expire expires an order for an existing event and returns the randomly assigned ga ticket to Redis', async () => {
         const event = await createTestEvent();
-        const ticket = await createTestTicket({ eventId: event.id });
+        const ticket = await createTestTicket({
+            eventId: event.id,
+            type: TICKET_TYPE.GA,
+        });
         const customer = await getTestCustomer(0);
 
-        const inventoryKey = redis.CacheKeys.seatedTicket(event.id, ticket.id);
-        await redis.setByKey(inventoryKey, TICKET_STATUS.AVAILABLE);
+        const inventoryKey = redis.CacheKeys.gaPool(event.id);
+        await redis.setPoolByKey(inventoryKey, [ticket.id]);
 
         const postPayload: OrderCreateRequest = {
             customerId: customer.id,
             orderItems: [
                 {
                     eventId: event.id,
-                    seatedTicketIds: [ticket.id],
-                    gaTicketQuantity: 0,
+                    seatedTicketIds: [],
+                    gaTicketQuantity: 1,
                 },
             ],
         };
@@ -61,13 +64,17 @@ describe('Orders API Integration Tests', () => {
         const orderTickets: OrderTicket[] = await db
             .select()
             .from(tableOrderTickets)
-            .where(eq(tableOrderTickets.orderId, order.id));
+            .where(and(eq(tableOrderTickets.orderId, order.id)));
 
         assert.ok(orderTickets);
         assert.strictEqual(orderTickets.length, 1);
+        assert.strictEqual(orderTickets[0].ticketId, ticket.id);
 
         const orderTicket = orderTickets[0];
-        assert.deepStrictEqual(orderTicket, { orderId: order.id, ticketId: ticket.id });
+        assert.deepStrictEqual(orderTicket, {
+            orderId: order.id,
+            ticketId: ticket.id,
+        });
 
         const getPayload: OrderGetRequest = {
             id: order.id,
@@ -81,8 +88,8 @@ describe('Orders API Integration Tests', () => {
 
         assert.deepStrictEqual(order, get.json);
 
-        const redisStock = await redis.getByKey(inventoryKey);
-        assert.strictEqual(redisStock, TICKET_STATUS.RESERVED);
+        const redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 0);
 
         await waitUntil(async () => {
             const [orderToExpire] = await db
@@ -115,7 +122,7 @@ describe('Orders API Integration Tests', () => {
         assert.ok(emptyOrderTickets);
         assert.strictEqual(emptyOrderTickets.length, 0);
 
-        const returnedRedisStock = await redis.getByKey(inventoryKey);
-        assert.strictEqual(returnedRedisStock, TICKET_STATUS.AVAILABLE);
+        const newRedisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(newRedisStockCount, 1);
     });
 });

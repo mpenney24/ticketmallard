@@ -1,24 +1,32 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
-import { orderExpireResponseSchema, orderExpireSchema } from '../db/schema';
+import {
+    orderExpireRequestSchema,
+    orderExpireResponseSchema,
+} from '../db/schemas/order-schema.db';
 import { expireOrder } from '../services/order.services';
+import { verifyQStashSignature } from '../utils/qstash';
 
 const orderExpireRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.post(
         '/',
         {
             schema: {
-                body: orderExpireSchema,
+                body: orderExpireRequestSchema,
                 response: {
                     200: orderExpireResponseSchema,
                 },
             },
+            preHandler: verifyQStashSignature,
         },
         async (request) => {
-            console.log('--- QSTASH HIT /EXPIRE ---');
-            console.log('Headers:', request.headers);
-            console.log('Body:', request.body);
-            return await expireOrder(request.body);
+            const result = await expireOrder(request.body);
+
+            if ('success' in result && result.success === false) {
+                console.warn(result.message);
+            }
+
+            return result;
         }
     );
 };

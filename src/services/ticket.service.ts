@@ -7,7 +7,7 @@ import {
     TicketCreateRequest,
     TicketGetRequest,
     TicketsGetRequest,
-} from '../db/schema';
+} from '../db/schemas/ticket-schema.db';
 import { NotFoundError } from '../errors/domain.errors';
 import * as redis from '../utils/redis';
 
