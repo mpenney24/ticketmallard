@@ -142,7 +142,7 @@ export async function expireOrder(
 
         await releaseOrderItemsViaRedis(orderItems);
 
-        return updatedOrder;
+        return { ...updatedOrder, success: true };
     } catch (error) {
         return {
             success: false,
@@ -170,7 +170,7 @@ export async function payOrder(
             body: { id: updatedOrder.id },
         });
 
-        return updatedOrder;
+        return { ...updatedOrder, success: true };
     } catch (error) {
         return {
             success: false,

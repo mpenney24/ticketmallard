@@ -1,3 +1,4 @@
+import { AddressInfo } from 'node:net';
 import { after, before } from 'node:test';
 
 import sinon from 'sinon';
@@ -14,11 +15,11 @@ before(async () => {
         toFake: ['Date'],
     });
     testApp = await buildApp();
-    await testApp.listen({ port: 0, host: '127.0.0.1' });
+    await testApp.listen({ port: 0, host: 'localhost' });
 
-    const address = testApp.server.address();
+    const address: AddressInfo | string | null = testApp.server.address();
     const port = typeof address === 'object' && address !== null ? address.port : 3000;
-    process.env.APP_URL = `http://127.0.0.1:${port}`;
+    process.env.APP_URL = `http://localhost:${port}`;
 });
 
 after(async () => {

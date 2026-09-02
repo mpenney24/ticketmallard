@@ -16,10 +16,6 @@ interface ReservationResult {
     data: string[];
 }
 
-interface ReleaseResult {
-    success: boolean;
-}
-
 export const CacheKeys = {
     gaPool: (eventId: string) => `{event:${eventId}}:tickets:ga` as const,
     seatedTicket: (eventId: string, ticketId: string) =>
@@ -30,10 +26,9 @@ export const CacheKeys = {
 
 export type CacheKey = ReturnType<(typeof CacheKeys)[keyof typeof CacheKeys]>;
 
-const redis = new Redis({
-    host: process.env.REDIS_HOST || 'localhost',
-    port: Number(process.env.REDIS_PORT) || 6379,
-    maxRetriesPerRequest: null,
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+    connectTimeout: 5000,
+    maxRetriesPerRequest: 3,
 });
 
 redis.defineCommand('reserveMixedCart', {

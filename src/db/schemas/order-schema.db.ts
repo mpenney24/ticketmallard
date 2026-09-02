@@ -103,14 +103,20 @@ export const orderExpireRequestSchema = orderUpdateSchema
     .required();
 export type OrderExpireWebhookRequest = z.infer<typeof orderExpireRequestSchema>;
 
-export const orderExpireResponseSchema = z.union([
-    orderUpdateResponseSchema,
-    z.object({
-        success: z.boolean(),
-        message: z.string(),
-    }),
+export const orderExpireResponse200Schema = orderUpdateResponseSchema.extend({
+    success: z.literal(true),
+});
+export const orderExpireResponse401Schema = z.object({
+    success: z.literal(false),
+    message: z.string(),
+});
+export const orderExpireResponse200RunThroughSchema = z.union([
+    orderExpireResponse200Schema,
+    orderExpireResponse401Schema,
 ]);
-export type OrderExpireWebhookResponse = z.infer<typeof orderExpireResponseSchema>;
+export type OrderExpireWebhookResponse = z.infer<
+    typeof orderExpireResponse200RunThroughSchema
+>;
 
 // -- PAY
 
@@ -121,16 +127,15 @@ export const orderPaySchema = orderUpdateSchema
     .required();
 export type OrderPayRequest = z.infer<typeof orderPaySchema>;
 
-export const orderPayResponseSchema = z.union([
-    orderObjectSchema.extend({
-        updatedAt: z.date(),
-    }),
-    z.object({
-        success: z.boolean(),
-        message: z.string(),
-    }),
-]);
-export type OrderPayResponse = z.infer<typeof orderPayResponseSchema>;
+export const orderPayResponse200Schema = orderObjectSchema.extend({
+    success: z.literal(true),
+});
+export const orderPayResponse401Schema = z.object({
+    success: z.literal(false),
+    message: z.string(),
+});
+export type OrderPayResponse =
+    z.infer<typeof orderPayResponse200Schema> | z.infer<typeof orderPayResponse401Schema>;
 
 // -- COMPLETED
 
@@ -139,11 +144,12 @@ export const orderCompleteRequestSchema = createSelectSchema(tableOrders).pick({
 });
 export type OrderCompleteWebhookRequest = z.infer<typeof orderCompleteRequestSchema>;
 
-export const orderCompleteResponseSchema = z.object({
-    success: z.boolean(),
+export const orderCompleteResponse200Schema = z.object({
+    success: z.literal(true),
     message: z.string().optional(),
 });
-export type OrderCompleteWebhookResponse = z.infer<typeof orderCompleteResponseSchema>;
+
+export type OrderCompleteWebhookResponse = z.infer<typeof orderCompleteResponse200Schema>;
 
 // -- GET/:id
 

@@ -19,8 +19,8 @@ const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: customersGetResponseSchema },
             },
         },
-        async () => {
-            return await db.select().from(tableCustomers);
+        async (request, reply) => {
+            return reply.code(200).send(await db.select().from(tableCustomers));
         }
     );
 
@@ -47,7 +47,7 @@ const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 return reply.notFound();
             }
 
-            return customer;
+            return reply.code(200).send(customer);
         }
     );
 };

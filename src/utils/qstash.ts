@@ -23,7 +23,7 @@ export function getQstash() {
     return qstashInstance;
 }
 
-const receiver = new Receiver({
+export const receiver = new Receiver({
     currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
     nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
 });

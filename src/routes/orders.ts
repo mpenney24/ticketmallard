@@ -13,6 +13,12 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(
         '/:id',
         {
+            config: {
+                rateLimit: {
+                    max: 5,
+                    timeWindow: '1 minute',
+                },
+            },
             schema: {
                 params: orderGetRequestSchema,
                 response: {
@@ -20,8 +26,8 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 },
             },
         },
-        async (request) => {
-            return await getOrder(request.params);
+        async (request, reply) => {
+            return reply.code(200).send(await getOrder(request.params));
         }
     );
 
@@ -36,10 +42,12 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
             },
             preHandler: [idempotencyHook],
         },
-        async (request) => {
-            return await createOrder(request.body, {
-                idempotencyKey: request.headers['idempotency-key'] as string,
-            });
+        async (request, reply) => {
+            return reply.code(201).send(
+                await createOrder(request.body, {
+                    idempotencyKey: request.headers['idempotency-key'] as string,
+                })
+            );
         }
     );
 };

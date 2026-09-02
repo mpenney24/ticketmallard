@@ -1,6 +1,10 @@
-import sensible from '@fastify/sensible';
+import rateLimit from '@fastify/rate-limit';
+import sensible, { HttpError } from '@fastify/sensible';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastify from 'fastify';
 import {
+    jsonSchemaTransform,
     serializerCompiler,
     validatorCompiler,
     ZodTypeProvider,
@@ -43,41 +47,60 @@ async function buildServer() {
             },
         },
     });
+
     // allow easy HTTP requests/responses
     await server.register(sensible);
+
     // allow ZOD schema parsing
     server.setValidatorCompiler(validatorCompiler);
     server.setSerializerCompiler(serializerCompiler);
 
-    server.addHook('onSend', async (request, reply, payload) => {
-        if (request.method === 'POST' && reply.statusCode === 200) {
-            reply.code(201);
-        }
-        return payload;
+    // prevent DDoS scripts hammering endpoints
+    await server.register(rateLimit, {
+        global: true,
+        max: 100,
+        timeWindow: '1 minute',
     });
 
-    // FOR DEBUGGING
-    // server.addHook('onResponse', (request, reply, done) => {
-    //     console.log(
-    //         `[Response] ${request.method} ${request.url} -> Status: ${reply.statusCode}`
-    //     );
-    //     done();
-    // });
+    await server.register(fastifySwagger, {
+        openapi: {
+            info: {
+                title: 'TicketMallard API',
+                description:
+                    'High-performance, atomically-enforced event ticketing and reservation system',
+                version: '1.0.0',
+            },
+        },
+        transform: jsonSchemaTransform,
+    });
+
+    await server.register(fastifySwaggerUi, {
+        routePrefix: '/docs',
+        uiConfig: {
+            docExpansion: 'list',
+            deepLinking: false,
+        },
+    });
 
     server.addHook('onClose', async () => {
         await db.$client.end();
     });
 
-    server.setErrorHandler((error, request, reply) => {
+    server.setErrorHandler((error: HttpError, request, reply) => {
         if (error instanceof DomainError) {
             return reply.code(error.statusCode).send({
-                error: error.name,
+                success: false,
                 message: error.message,
             });
         }
 
         request.log.error(error);
-        throw error;
+
+        const statusCode = error.statusCode || 500;
+        return reply.code(statusCode).send({
+            success: false,
+            message: error.message || 'Ticketmallard Internal Server Error',
+        });
     });
 
     server.get('/health', async () => {

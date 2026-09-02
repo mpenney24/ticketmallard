@@ -6,6 +6,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../src/db';
 import {
     Order,
+    OrderCompleteWebhookRequest,
+    OrderCompleteWebhookResponse,
     OrderCreateRequest,
     OrderGetRequest,
     OrderGetResponse,
@@ -21,6 +23,7 @@ import {
     createTestTicket,
     getTestCustomer,
     typedInject,
+    UNKNOWN_UUID,
 } from '../helpers';
 
 describe('Orders API Integration Tests', () => {
@@ -94,5 +97,19 @@ describe('Orders API Integration Tests', () => {
         assert.strictEqual(redisSeatedStock, TICKET_STATUS.RESERVED);
         const redisGaStockCount = await redis.getPoolByKey(gaInventoryKey);
         assert.strictEqual(redisGaStockCount, 0);
+    });
+
+    test('POST /api/orders/complete webhook generated from /pay fails to process if missing the "upstash-signature" header', async () => {
+        const payload: OrderCompleteWebhookRequest = {
+            id: UNKNOWN_UUID,
+        };
+
+        const post = await typedInject<OrderCompleteWebhookResponse>({
+            method: 'POST',
+            url: '/api/orders/complete',
+            payload,
+        });
+        assert.strictEqual(post.statusCode, 401);
+        assert.strictEqual(post.json.message, 'Missing upstash-signature HTTP Signature');
     });
 });

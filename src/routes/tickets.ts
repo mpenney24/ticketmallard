@@ -19,8 +19,8 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: ticketsGetResponseSchema },
             },
         },
-        async (request) => {
-            return await getTickets(request.params);
+        async (request, reply) => {
+            return reply.code(200).send(await getTickets(request.params));
         }
     );
 
@@ -32,8 +32,8 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: ticketGetResponseSchema },
             },
         },
-        async (request) => {
-            return await getTicket(request.params);
+        async (request, reply) => {
+            return reply.code(200).send(await getTicket(request.params));
         }
     );
 
@@ -45,8 +45,8 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 201: ticketCreateResponseSchema },
             },
         },
-        async (request) => {
-            return await createTicket(request.body);
+        async (request, reply) => {
+            return reply.code(201).send(await createTicket(request.body));
         }
     );
 };

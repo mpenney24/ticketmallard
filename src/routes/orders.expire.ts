@@ -2,7 +2,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import {
     orderExpireRequestSchema,
-    orderExpireResponseSchema,
+    orderExpireResponse200RunThroughSchema,
 } from '../db/schemas/order-schema.db';
 import { expireOrder } from '../services/order.services';
 import { verifyQStashSignature } from '../utils/qstash';
@@ -14,19 +14,21 @@ const orderExpireRoutes: FastifyPluginAsyncZod = async (fastify) => {
             schema: {
                 body: orderExpireRequestSchema,
                 response: {
-                    200: orderExpireResponseSchema,
+                    200: orderExpireResponse200RunThroughSchema,
                 },
             },
             preHandler: verifyQStashSignature,
         },
-        async (request) => {
+        async (request, reply) => {
             const result = await expireOrder(request.body);
 
-            if ('success' in result && result.success === false) {
+            if (result.success === false) {
                 console.warn(result.message);
+                // sending 200 instead of 401 as qstash will retry/DLQ it
+                return reply.code(200).send(result);
             }
 
-            return result;
+            return reply.code(200).send(result);
         }
     );
 };

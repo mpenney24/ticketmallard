@@ -21,8 +21,8 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 response: { 200: eventsGetResponseSchema },
             },
         },
-        async () => {
-            return await db.select().from(tableEvents);
+        async (request, reply) => {
+            return reply.code(200).send(await db.select().from(tableEvents));
         }
     );
 
@@ -49,7 +49,7 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 return reply.notFound();
             }
 
-            return event;
+            return reply.code(200).send(event);
         }
     );
 
@@ -63,10 +63,10 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 },
             },
         },
-        async (request) => {
+        async (request, reply) => {
             const [event] = await db.insert(tableEvents).values(request.body).returning();
 
-            return event;
+            return reply.code(201).send(event);
         }
     );
 };

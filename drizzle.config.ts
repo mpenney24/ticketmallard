@@ -10,6 +10,6 @@ export default defineConfig({
     dbCredentials: {
         url:
             process.env.DATABASE_URL ||
-            'postgres://postgres:postgres@127.0.0.1:5432/ticketmallard',
+            'postgres://postgres:postgres@localhost:5432/ticketmallard',
     },
 });
