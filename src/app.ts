@@ -4,13 +4,14 @@ import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastify from 'fastify';
 import {
-    jsonSchemaTransform,
+    createJsonSchemaTransform,
     serializerCompiler,
     validatorCompiler,
     ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 
 import { db } from './db/index';
+import { mapDatabaseError } from './db/mapDatabaseErrors';
 import { DomainError } from './errors/domain.errors';
 import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
@@ -62,16 +63,23 @@ async function buildServer() {
         timeWindow: '1 minute',
     });
 
+    const customTransform = createJsonSchemaTransform({
+        zodToJsonConfig: {
+            target: 'draft-2020-12',
+        },
+    });
+
     await server.register(fastifySwagger, {
         openapi: {
+            openapi: '3.1.0',
             info: {
                 title: 'TicketMallard API',
                 description:
-                    'High-performance, atomically-enforced event ticketing and reservation system',
+                    'A high-performance, atomically-enforced event ticketing and reservation system... mwap!',
                 version: '1.0.0',
             },
         },
-        transform: jsonSchemaTransform,
+        transform: customTransform,
     });
 
     await server.register(fastifySwaggerUi, {
@@ -91,6 +99,15 @@ async function buildServer() {
             return reply.code(error.statusCode).send({
                 success: false,
                 message: error.message,
+            });
+        }
+
+        const mappedDbError = mapDatabaseError(error);
+        if (mappedDbError) {
+            return reply.status(mappedDbError.status).send({
+                success: false,
+                error: 'Bad Request',
+                message: mappedDbError.message,
             });
         }
 

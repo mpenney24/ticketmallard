@@ -5,7 +5,7 @@ import {
     TicketCreateResponse,
     TicketGetRequest,
     TicketGetResponse,
-} from '../../src/db/schemas/ticket-schema.db';
+} from '../../src/db/schemas/ticket/schemas.db';
 import { createNewTicket, createTestEvent, typedInject } from '../helpers';
 
 describe('Tickets API Integration Tests', () => {

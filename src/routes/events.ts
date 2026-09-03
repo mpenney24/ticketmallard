@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import { db } from '../db';
+import { buildConditions } from '../db/buildConditions';
 import {
     eventCreateResponseSchema,
     eventCreateSchema,
@@ -9,20 +10,28 @@ import {
     eventGetResponseSchema,
     eventsGetRequestSchema,
     eventsGetResponseSchema,
-    tableEvents,
-} from '../db/schemas/event-schema.db';
+} from '../db/schemas/event/schemas.db';
+import { tableEvents } from '../db/schemas/event/table.db';
 
 const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(
         '/',
         {
             schema: {
-                params: eventsGetRequestSchema,
+                tags: ['Events'],
+                querystring: eventsGetRequestSchema,
                 response: { 200: eventsGetResponseSchema },
             },
         },
         async (request, reply) => {
-            return reply.code(200).send(await db.select().from(tableEvents));
+            const conditions = buildConditions(tableEvents, request.query);
+
+            return reply.code(200).send(
+                await db
+                    .select()
+                    .from(tableEvents)
+                    .where(and(...conditions))
+            );
         }
     );
 
@@ -30,6 +39,7 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
         '/:id',
         {
             schema: {
+                tags: ['Events'],
                 params: eventGetRequestSchema,
                 response: {
                     200: eventGetResponseSchema,
@@ -57,6 +67,7 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
         '/',
         {
             schema: {
+                tags: ['Events'],
                 body: eventCreateSchema,
                 response: {
                     201: eventCreateResponseSchema,

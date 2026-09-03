@@ -193,6 +193,20 @@ export async function markTicketsAsSold(
     return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
 }
 
+export async function addTicketToRedis(
+    eventId: string,
+    ticketId: string,
+    ticketType: string
+): Promise<{ success: boolean }> {
+    if (ticketType === 'GA') {
+        await setPoolByKey(CacheKeys.gaPool(eventId), [ticketId]);
+    } else {
+        await setByKey(CacheKeys.seatedTicket(eventId, ticketId), 'AVAILABLE');
+    }
+
+    return { success: true };
+}
+
 export async function setByKey(key: CacheKey, value: string | Buffer | number) {
     await redis.set(key, value);
 }

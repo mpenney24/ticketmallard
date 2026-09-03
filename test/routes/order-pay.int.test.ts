@@ -3,7 +3,6 @@ import { describe, mock, test } from 'node:test';
 
 import {
     Order,
-    ORDER_STATUS,
     OrderCreateRequest,
     OrderExpireWebhookRequest,
     OrderExpireWebhookResponse,
@@ -12,8 +11,9 @@ import {
     OrderItemsReservedByEvent,
     OrderPayRequest,
     OrderPayResponse,
-} from '../../src/db/schemas/order-schema.db';
-import { TICKET_STATUS } from '../../src/db/schemas/ticket-schema.db';
+} from '../../src/db/schemas/order/schemas.db';
+import { ORDER_STATUS } from '../../src/db/schemas/order/table.db';
+import { TICKET_STATUS } from '../../src/db/schemas/ticket/table.db';
 import * as qstashModule from '../../src/utils/qstash';
 import * as redis from '../../src/utils/redis';
 import {

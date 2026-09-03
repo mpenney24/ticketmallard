@@ -3,7 +3,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import {
     orderExpireRequestSchema,
     orderExpireResponse200RunThroughSchema,
-} from '../db/schemas/order-schema.db';
+} from '../db/schemas/order/schemas.db';
 import { expireOrder } from '../services/order.services';
 import { verifyQStashSignature } from '../utils/qstash';
 
@@ -12,6 +12,7 @@ const orderExpireRoutes: FastifyPluginAsyncZod = async (fastify) => {
         '/',
         {
             schema: {
+                hide: true,
                 body: orderExpireRequestSchema,
                 response: {
                     200: orderExpireResponse200RunThroughSchema,

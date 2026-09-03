@@ -1,42 +1,10 @@
-import { sql } from 'drizzle-orm';
-import { pgEnum, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
-import {
-    createInsertSchema,
-    createSelectSchema,
-    createUpdateSchema,
-} from 'drizzle-orm/zod';
+import { createSelectSchema } from 'drizzle-orm/zod';
 import z from 'zod';
 
-import { tableCustomers } from './customer-schema.db';
+import { createInsertSchema, createUpdateSchema } from '../drizzleFactories';
+import { ORDER_STATUS, tableOrders } from './table.db';
 
-// ENUMS
-
-export enum ORDER_STATUS {
-    PENDING = 'PENDING',
-    EXPIRED = 'EXPIRED',
-    PAID = 'PAID',
-    FAILED = 'FAILED',
-}
-export const orderStatusEnum = pgEnum('order_status', ORDER_STATUS);
-
-// TABLES (and ENTITIES)
-
-const order = {
-    id: uuid('id').defaultRandom().primaryKey(),
-    customerId: uuid('customer_id')
-        .references(() => tableCustomers.id)
-        .notNull(),
-    status: orderStatusEnum('status').default(ORDER_STATUS.PENDING).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').$onUpdate(() => sql`CURRENT_DATE`),
-};
-export const tableOrders = pgTable('orders', order);
-
-// TYPES
-
-// - ORDER
-
-// -- OBJECT
+// OBJECT
 
 export const orderObjectSchema = createSelectSchema(tableOrders);
 export type Order = z.infer<typeof orderObjectSchema>;
@@ -89,7 +57,7 @@ export const orderUpdateSchema = createUpdateSchema(tableOrders, {
 export type OrderUpdateRequest = z.infer<typeof orderUpdateSchema>;
 
 export const orderUpdateResponseSchema = orderObjectSchema.extend({
-    updatedAt: z.date(),
+    updatedAt: z.date().default(new Date()),
 });
 export type OrderUpdateResponse = z.infer<typeof orderUpdateResponseSchema>;
 
@@ -158,3 +126,17 @@ export type OrderGetRequest = z.infer<typeof orderGetRequestSchema>;
 
 export const orderGetResponseSchema = orderObjectSchema;
 export type OrderGetResponse = z.infer<typeof orderGetResponseSchema>;
+
+// -- GET
+
+export const ordersGetRequestSchema = createSelectSchema(tableOrders)
+    .omit({ createdAt: true, updatedAt: true })
+    .partial();
+export type OrdersGetRequest = z.infer<typeof ordersGetRequestSchema>;
+
+export const ordersGetResponseSchema = z.array(
+    orderObjectSchema.extend({
+        orderTicketIds: z.array(z.uuid()),
+    })
+);
+export type OrdersGetResponse = z.infer<typeof ordersGetResponseSchema>;

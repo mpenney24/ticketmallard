@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import {
     eventCreateSchema,
     EventsGetResponse,
-} from '../../src/db/schemas/event-schema.db';
+} from '../../src/db/schemas/event/schemas.db';
 import { createNewEvent, typedInject, UNKNOWN_UUID } from '../helpers';
 
 describe('Events API Integration Tests', () => {

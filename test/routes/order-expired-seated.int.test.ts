@@ -6,17 +6,14 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../src/db';
 import {
     Order,
-    ORDER_STATUS,
     OrderCreateRequest,
     OrderGetRequest,
     OrderGetResponse,
-    tableOrders,
-} from '../../src/db/schemas/order-schema.db';
-import {
-    OrderTicket,
-    tableOrderTickets,
-} from '../../src/db/schemas/order-ticket-schema.db';
-import { TICKET_STATUS } from '../../src/db/schemas/ticket-schema.db';
+} from '../../src/db/schemas/order/schemas.db';
+import { ORDER_STATUS, tableOrders } from '../../src/db/schemas/order/table.db';
+import { OrderTicket } from '../../src/db/schemas/order-ticket/schemas.db';
+import { tableOrderTickets } from '../../src/db/schemas/order-ticket/table.db';
+import { TICKET_STATUS } from '../../src/db/schemas/ticket/table.db';
 import * as redis from '../../src/utils/redis';
 import {
     createTestEvent,

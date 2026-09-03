@@ -4,7 +4,7 @@ import {
     orderPayResponse200Schema,
     orderPayResponse401Schema,
     orderPaySchema,
-} from '../db/schemas/order-schema.db';
+} from '../db/schemas/order/schemas.db';
 import { payOrder } from '../services/order.services';
 
 const orderPayRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -12,6 +12,7 @@ const orderPayRoutes: FastifyPluginAsyncZod = async (fastify) => {
         '/',
         {
             schema: {
+                tags: ['Orders'],
                 body: orderPaySchema,
                 response: {
                     200: orderPayResponse200Schema,

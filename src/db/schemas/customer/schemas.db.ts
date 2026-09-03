@@ -1,19 +1,9 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { createSelectSchema } from 'drizzle-orm/zod';
 import z from 'zod';
 
-// TABLES (and ENTITIES)
+import { createSelectSchema } from '../drizzleFactories';
+import { tableCustomers } from './table.db';
 
-const customer = {
-    id: uuid('id').defaultRandom().primaryKey(),
-    email: text('email').notNull().unique(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-};
-export const tableCustomers = pgTable('customers', customer);
-
-// TYPES
-
-// -- CUSTOMER
+// OBJECT
 
 export const customerObjectSchema = createSelectSchema(tableCustomers);
 export type Customer = z.infer<typeof customerObjectSchema>;
@@ -30,7 +20,9 @@ export type CustomerGetResponse = z.infer<typeof customerGetResponseSchema>;
 
 // -- GET/
 
-export const customersGetRequestSchema = createSelectSchema(tableCustomers).partial();
+export const customersGetRequestSchema = createSelectSchema(tableCustomers)
+    .omit({ createdAt: true })
+    .partial();
 export type CustomersGetRequest = z.infer<typeof customersGetRequestSchema>;
 
 export const customersGetResponseSchema = z.array(customerObjectSchema);

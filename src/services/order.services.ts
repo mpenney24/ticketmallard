@@ -1,8 +1,8 @@
 import { and, eq, SQL } from 'drizzle-orm';
 
 import { db } from '../db';
+import { buildConditions } from '../db/buildConditions';
 import {
-    ORDER_STATUS,
     OrderCompleteWebhookRequest,
     OrderCompleteWebhookResponse,
     OrderCreateRequest,
@@ -14,16 +14,15 @@ import {
     OrderItemsReservedByEvent,
     OrderPayRequest,
     OrderPayResponse,
+    OrdersGetRequest,
     OrderUpdateRequest,
     OrderUpdateResponse,
     orderUpdateResponseSchema,
-    tableOrders,
-} from '../db/schemas/order-schema.db';
-import {
-    OrderTicketCreateRequest,
-    tableOrderTickets,
-} from '../db/schemas/order-ticket-schema.db';
-import { tableTickets } from '../db/schemas/ticket-schema.db';
+} from '../db/schemas/order/schemas.db';
+import { ORDER_STATUS, tableOrders } from '../db/schemas/order/table.db';
+import { OrderTicketCreateRequest } from '../db/schemas/order-ticket/schemas.db';
+import { tableOrderTickets } from '../db/schemas/order-ticket/table.db';
+import { tableTickets } from '../db/schemas/ticket/table.db';
 import { NotFoundError } from '../errors/domain.errors';
 import { getQstash } from '../utils/qstash';
 import * as redis from '../utils/redis';
@@ -48,6 +47,37 @@ export async function getOrder(request: OrderGetRequest) {
     }
 
     return order;
+}
+
+export async function getOrders(request: OrdersGetRequest) {
+    const conditions = buildConditions(tableOrders, request);
+
+    const rows = await db
+        .select({
+            order: tableOrders,
+            ticketId: tableOrderTickets.ticketId,
+        })
+        .from(tableOrders)
+        .leftJoin(tableOrderTickets, eq(tableOrders.id, tableOrderTickets.orderId))
+        .where(conditions.length ? and(...conditions) : undefined);
+
+    const map = new Map<
+        string,
+        typeof tableOrders.$inferSelect & { orderTicketIds: string[] }
+    >();
+
+    for (const row of rows) {
+        let entry = map.get(row.order.id);
+        if (!entry) {
+            entry = { ...row.order, orderTicketIds: [] };
+            map.set(row.order.id, entry);
+        }
+        if (row.ticketId) {
+            entry.orderTicketIds.push(row.ticketId);
+        }
+    }
+
+    return Array.from(map.values());
 }
 
 export async function createOrder(

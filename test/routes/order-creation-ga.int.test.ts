@@ -8,12 +8,10 @@ import {
     Order,
     OrderCreateRequest,
     OrderGetResponse,
-} from '../../src/db/schemas/order-schema.db';
-import {
-    OrderTicket,
-    tableOrderTickets,
-} from '../../src/db/schemas/order-ticket-schema.db';
-import { TICKET_TYPE } from '../../src/db/schemas/ticket-schema.db';
+} from '../../src/db/schemas/order/schemas.db';
+import { OrderTicket } from '../../src/db/schemas/order-ticket/schemas.db';
+import { tableOrderTickets } from '../../src/db/schemas/order-ticket/table.db';
+import { TICKET_TYPE } from '../../src/db/schemas/ticket/table.db';
 import { SoldOutError } from '../../src/errors/domain.errors';
 import * as redis from '../../src/utils/redis';
 import {

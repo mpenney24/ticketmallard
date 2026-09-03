@@ -6,7 +6,7 @@ import {
     eventCreateSchema,
     EventGetRequest,
     EventGetResponse,
-} from '../../src/db/schemas/event-schema.db';
+} from '../../src/db/schemas/event/schemas.db';
 import { createNewEvent, typedInject } from '../helpers';
 
 describe('Events API Integration Tests', () => {

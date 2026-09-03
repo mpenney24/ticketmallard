@@ -1,17 +1,10 @@
 import { InjectOptions } from 'fastify';
 
-import { CustomersGetResponse } from '../src/db/schemas/customer-schema.db';
-import {
-    Event,
-    EventCreateRequest,
-    eventCreateSchema,
-} from '../src/db/schemas/event-schema.db';
-import { Order, OrderCreateRequest } from '../src/db/schemas/order-schema.db';
-import {
-    Ticket,
-    TICKET_TYPE,
-    TicketCreateRequest,
-} from '../src/db/schemas/ticket-schema.db';
+import { CustomersGetResponse } from '../src/db/schemas/customer/schemas.db';
+import { Event, EventCreateRequest } from '../src/db/schemas/event/schemas.db';
+import { Order, OrderCreateRequest } from '../src/db/schemas/order/schemas.db';
+import { Ticket, TicketCreateRequest } from '../src/db/schemas/ticket/schemas.db';
+import { TICKET_TYPE } from '../src/db/schemas/ticket/table.db';
 import { getTestApp } from './setup';
 
 export async function typedInject<T>(opts: InjectOptions | string) {
@@ -42,10 +35,10 @@ export async function waitUntil(
     throw new Error('Condition timed out');
 }
 
-export const createNewEvent: EventCreateRequest = eventCreateSchema.parse({
+export const createNewEvent: EventCreateRequest = {
     title: 'Duck Concert 2026',
-    startTime: FIXED_DATE,
-});
+    startDateTime: FIXED_DATE,
+};
 
 export const createNewTicket: (event: Event) => TicketCreateRequest = (event) => {
     const payload = {

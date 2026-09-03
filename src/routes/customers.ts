@@ -1,26 +1,35 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
 import { db } from '../db';
+import { buildConditions } from '../db/buildConditions';
 import {
     customerGetRequestSchema,
     customerGetResponseSchema,
     customersGetRequestSchema,
     customersGetResponseSchema,
-    tableCustomers,
-} from '../db/schemas/customer-schema.db';
+} from '../db/schemas/customer/schemas.db';
+import { tableCustomers } from '../db/schemas/customer/table.db';
 
 const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(
         '/',
         {
             schema: {
-                params: customersGetRequestSchema,
+                tags: ['Customers'],
+                querystring: customersGetRequestSchema,
                 response: { 200: customersGetResponseSchema },
             },
         },
         async (request, reply) => {
-            return reply.code(200).send(await db.select().from(tableCustomers));
+            const conditions = buildConditions(tableCustomers, request.query);
+
+            return reply.code(200).send(
+                await db
+                    .select()
+                    .from(tableCustomers)
+                    .where(conditions.length ? and(...conditions) : undefined)
+            );
         }
     );
 
@@ -28,6 +37,7 @@ const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
         '/:id',
         {
             schema: {
+                tags: ['Customers'],
                 params: customerGetRequestSchema,
                 response: {
                     200: customerGetResponseSchema,
