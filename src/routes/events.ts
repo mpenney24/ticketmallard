@@ -75,7 +75,13 @@ const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
             },
         },
         async (request, reply) => {
-            const [event] = await db.insert(tableEvents).values(request.body).returning();
+            const [event] = await db
+                .insert(tableEvents)
+                .values({
+                    ...request.body,
+                    startDateTime: new Date(request.body.startDateTime),
+                })
+                .returning();
 
             return reply.code(201).send(event);
         }

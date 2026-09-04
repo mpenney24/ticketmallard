@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgEnum, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { tableEvents } from '../event/table.db';
@@ -22,6 +23,6 @@ const ticket = {
     type: ticketTypeEnum('type').notNull(),
     createdAt: timestamp('created_at', { mode: 'date', withTimezone: true })
         .notNull()
-        .defaultNow(),
+        .default(sql`now()`),
 };
 export const tableTickets = pgTable('tickets', ticket);

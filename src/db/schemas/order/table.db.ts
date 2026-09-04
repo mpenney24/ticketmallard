@@ -19,8 +19,8 @@ const order = {
     createdAt: timestamp('created_at', { mode: 'date', withTimezone: true })
         .notNull()
         .defaultNow(),
-    updatedAt: timestamp('updated_at', { mode: 'date', withTimezone: true })
-        .notNull()
-        .$onUpdate(() => new Date()),
+    updatedAt: timestamp('updated_at', { mode: 'date', withTimezone: true }).$onUpdate(
+        () => new Date()
+    ),
 };
 export const tableOrders = pgTable('orders', order);

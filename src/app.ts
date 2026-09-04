@@ -20,6 +20,24 @@ import orderCompleteRoutes from './routes/orders.complete';
 import orderExpireRoutes from './routes/orders.expire';
 import orderPayRoutes from './routes/orders.pay';
 import ticketRoutes from './routes/tickets';
+import {
+    dehydrateResponseForCache,
+    generateIdempotencyKey,
+    rehydrateResponseFromCache,
+} from './utils/idempotency';
+import {
+    getIdempotency,
+    getIdempotencyLock,
+    releaseIdempotencyLock,
+    setIdempotency,
+} from './utils/redis';
+
+declare module 'fastify' {
+    interface FastifyRequest {
+        idempotencyKey?: string;
+        idempotencyLockToken?: string;
+    }
+}
 
 async function buildServer() {
     const server = fastify({
@@ -63,6 +81,77 @@ async function buildServer() {
         timeWindow: '1 minute',
     });
 
+    // create (and check) cached processes with idempotency to defend against repeated POST/PATCH requests
+    server.addHook('preHandler', async (request, reply) => {
+        if (
+            request.headers['x-bypass-idempotency'] === 'true' &&
+            process.env.NODE_ENV !== 'prod'
+        ) {
+            return;
+        }
+
+        if (['POST', 'PATCH'].includes(request.method)) {
+            const idempotencyKey = generateIdempotencyKey(request.body);
+            request.idempotencyKey = idempotencyKey;
+            const cached = await getIdempotency(idempotencyKey);
+
+            if (cached) {
+                const revivedBody = rehydrateResponseFromCache(cached.body);
+                return reply.code(cached.statusCode).send(revivedBody);
+            }
+
+            const lockToken = crypto.randomUUID();
+
+            const lockAcquired = await getIdempotencyLock(idempotencyKey, lockToken);
+            if (!lockAcquired) {
+                return reply.code(409).send({ error: 'Concurrent request in progress' });
+            }
+
+            request.idempotencyLockToken = lockToken;
+        }
+    });
+
+    server.addHook('onSend', async (request, reply, payload) => {
+        if (
+            request.headers['x-bypass-idempotency'] === 'true' &&
+            process.env.NODE_ENV !== 'prod'
+        ) {
+            return;
+        }
+
+        if (
+            ['POST', 'PATCH'].includes(request.method) &&
+            reply.statusCode >= 200 &&
+            reply.statusCode < 300
+        ) {
+            const idempotencyKey = generateIdempotencyKey(request.body);
+            const body = typeof payload === 'string' ? JSON.parse(payload) : payload;
+
+            const serialized = dehydrateResponseForCache(body);
+
+            await setIdempotency(idempotencyKey, {
+                statusCode: reply.statusCode,
+                body: serialized,
+            });
+        }
+
+        return payload;
+    });
+
+    server.addHook('onResponse', async (request) => {
+        if (request.idempotencyKey && request.idempotencyLockToken) {
+            try {
+                await releaseIdempotencyLock(
+                    request.idempotencyKey,
+                    request.idempotencyLockToken
+                );
+            } catch (err) {
+                request.log.error({ err }, 'Failed to release idempotency lock');
+            }
+        }
+    });
+
+    // build swagger docs
     const customTransform = createJsonSchemaTransform({
         zodToJsonConfig: {
             target: 'draft-2020-12',
@@ -90,10 +179,12 @@ async function buildServer() {
         },
     });
 
+    // close cleanly on app shutdown
     server.addHook('onClose', async () => {
         await db.$client.end();
     });
 
+    // error handling
     server.setErrorHandler((error: HttpError, request, reply) => {
         if (error instanceof DomainError) {
             return reply.code(error.statusCode).send({

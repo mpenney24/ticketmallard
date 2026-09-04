@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const event = {
@@ -10,6 +11,6 @@ const event = {
     }).notNull(),
     createdAt: timestamp('created_at', { mode: 'date', withTimezone: true })
         .notNull()
-        .defaultNow(),
+        .default(sql`now()`),
 };
 export const tableEvents = pgTable('events', event);

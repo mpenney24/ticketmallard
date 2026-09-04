@@ -8,7 +8,7 @@ import {
 
 export interface CachedData {
     statusCode: number;
-    body: unknown;
+    body: string;
 }
 
 interface ReservationResult {
@@ -16,11 +16,16 @@ interface ReservationResult {
     data: string[];
 }
 
+interface ReleaseResult {
+    released: string[];
+    notReleased: string[];
+}
+
 export const CacheKeys = {
     gaPool: (eventId: string) => `{event:${eventId}}:tickets:ga` as const,
     seatedTicket: (eventId: string, ticketId: string) =>
         `{event:${eventId}}:seat:${ticketId}` as const,
-    lock: (id: string) => `lock:${id}` as const,
+    lock: (idempotencyKey: string) => `lock:${idempotencyKey}` as const,
     idempotency: (key: string) => `idempotency:${key}` as const,
 };
 
@@ -28,7 +33,12 @@ export type CacheKey = ReturnType<(typeof CacheKeys)[keyof typeof CacheKeys]>;
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     connectTimeout: 5000,
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    retryStrategy(times) {
+        return Math.min(times * 50, 2000);
+    },
+    commandQueue: true,
 });
 
 redis.defineCommand('reserveMixedCart', {
@@ -92,7 +102,7 @@ export async function reserveMixedCart(
         gaPoolKey,
         eventId,
         gaQuantity,
-        ...seatedTicketIds
+        ...(seatedTicketIds.length > 0 ? seatedTicketIds : [])
     );
 
     const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
@@ -117,29 +127,49 @@ redis.defineCommand('releaseMixedCart', {
         local gaPoolKey = KEYS[1]
         local eventId = ARGV[1]
         
+        local released = {}
+        local notReleased = {}
+        
         for i = 2, #ARGV do
             local ticketId = ARGV[i]
             local seatKey = "{event:" .. eventId .. "}:seat:" .. ticketId
             
-            -- 1. Check if this ticket ID matches a seated ticket key pattern
-            local seatExists = redis.call('exists', seatKey)
+            -- 1. Check if a seat record exists for this ticketId
+            local currentStatus = redis.call('get', seatKey)
             
-            if seatExists == 1 then
-                redis.call('set', seatKey, "AVAILABLE")
+            if currentStatus then
+                -- 2a. it is a seated ticket: ONLY release if it is currently RESERVED
+                --     this ensures SOLD or already AVAILABLE seats are untouched
+                if currentStatus == "RESERVED" then
+                    redis.call('set', seatKey, "AVAILABLE")
+                    table.insert(released, ticketId)
+                else
+                    table.insert(notReleased, ticketId)
+                end
             else
-                -- 2. Otherwise, return it to GA pool
-                redis.call('sadd', gaPoolKey, ticketId)
+                -- 2b. it is NOT a seated ticket: handle GA release safely 
+                --     (e.g., ensure it belongs to the GA pool before adding back)
+                local isMember = redis.call('sismember', gaPoolKey, ticketId)
+                if isMember == 0 then
+                    redis.call('sadd', gaPoolKey, ticketId)
+                    table.insert(released, ticketId)
+                else
+                    table.insert(notReleased, ticketId)
+                end
             end
         end
         
-        return cjson.encode({ success = true })
+        return {
+            released = released,
+            notReleased = notReleased
+        }
     `,
 });
 
 export async function releaseMixedCart(
     eventId: string,
     orderTicketIds: string[]
-): Promise<ReservationResult> {
+): Promise<ReleaseResult> {
     const gaPoolKey = CacheKeys.gaPool(eventId);
 
     // @ts-ignore - ioredis dynamic command typing
@@ -149,7 +179,11 @@ export async function releaseMixedCart(
         ...orderTicketIds
     );
 
-    return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+    const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+    return {
+        released: Array.isArray(result.released) ? result.released : [],
+        notReleased: Array.isArray(result.notReleased) ? result.notReleased : [],
+    };
 }
 
 redis.defineCommand('markTicketsAsSold', {
@@ -180,31 +214,23 @@ redis.defineCommand('markTicketsAsSold', {
 export async function markTicketsAsSold(
     eventId: string,
     orderTicketIds: string[]
-): Promise<{ success: boolean }> {
+): Promise<void> {
     const gaPoolKey = CacheKeys.gaPool(eventId);
 
     // @ts-ignore - ioredis dynamic command typing
-    const rawResult: string = await redis.markTicketsAsSold(
-        gaPoolKey,
-        eventId,
-        ...orderTicketIds
-    );
-
-    return typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+    await redis.markTicketsAsSold(gaPoolKey, eventId, ...orderTicketIds);
 }
 
 export async function addTicketToRedis(
     eventId: string,
     ticketId: string,
     ticketType: string
-): Promise<{ success: boolean }> {
+): Promise<void> {
     if (ticketType === 'GA') {
         await setPoolByKey(CacheKeys.gaPool(eventId), [ticketId]);
     } else {
         await setByKey(CacheKeys.seatedTicket(eventId, ticketId), 'AVAILABLE');
     }
-
-    return { success: true };
 }
 
 export async function setByKey(key: CacheKey, value: string | Buffer | number) {
@@ -237,6 +263,46 @@ export async function setIdempotency(
         'EX',
         300
     );
+}
+
+export async function getIdempotency(
+    idempotencyKey: string | undefined
+): Promise<CachedData | null> {
+    if (!idempotencyKey) return null;
+
+    const cached = await redis.get(CacheKeys.idempotency(idempotencyKey));
+    if (!cached) return null;
+
+    return JSON.parse(cached);
+}
+
+export async function getIdempotencyLock(
+    idempotencyKey: string | undefined,
+    lockToken: string
+) {
+    if (!idempotencyKey) return null;
+
+    const lockKey = CacheKeys.lock(idempotencyKey);
+
+    return await redis.set(lockKey, lockToken, 'EX', 10, 'NX');
+}
+
+export async function releaseIdempotencyLock(
+    idempotencyKey: string | undefined,
+    idempotencyLockToken: string
+) {
+    if (!idempotencyKey) return null;
+
+    const lockKey = CacheKeys.lock(idempotencyKey);
+
+    const releaseScript = `
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+        `;
+    await redis.eval(releaseScript, 1, lockKey, idempotencyLockToken);
 }
 
 export async function quit() {

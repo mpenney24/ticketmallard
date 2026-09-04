@@ -4,10 +4,11 @@ import { describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 
 import { db } from '../../src/db';
+import { CustomersGetResponse } from '../../src/db/schemas/customer/schemas.db';
 import {
-    Order,
     OrderCreateRequest,
     OrderGetResponse,
+    OrderTimestamped,
 } from '../../src/db/schemas/order/schemas.db';
 import { OrderTicket } from '../../src/db/schemas/order-ticket/schemas.db';
 import { tableOrderTickets } from '../../src/db/schemas/order-ticket/table.db';
@@ -31,7 +32,8 @@ describe('Orders API Integration Tests', () => {
         const customer = await getTestCustomer(0);
 
         const inventoryKey = redis.CacheKeys.gaPool(event.id);
-        await redis.setPoolByKey(inventoryKey, [ticket.id]);
+        let redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 1);
 
         const postPayload: OrderCreateRequest = {
             customerId: customer.id,
@@ -46,7 +48,7 @@ describe('Orders API Integration Tests', () => {
 
         const requestCount = 10;
         const requests = Array.from({ length: requestCount }, () =>
-            typedInject<Order>({
+            typedInject<OrderTimestamped>({
                 method: 'POST',
                 url: '/api/orders',
                 payload: postPayload,
@@ -66,6 +68,95 @@ describe('Orders API Integration Tests', () => {
         assert.strictEqual(
             failures.length,
             requestCount - 1,
+            'All other competing OrderCreateRequests should be rejected'
+        );
+
+        failures.forEach((fail) => {
+            assert.strictEqual(fail.statusCode, 409);
+
+            const errorMessage = (fail.json as { error?: string })?.error;
+            assert.strictEqual(errorMessage, `Concurrent request in progress`);
+        });
+
+        const orderTickets: OrderTicket[] = await db
+            .select()
+            .from(tableOrderTickets)
+            .where(eq(tableOrderTickets.orderId, successes[0].json.id));
+
+        assert.ok(orderTickets);
+        assert.strictEqual(orderTickets.length, 1);
+        assert.strictEqual(orderTickets[0].ticketId, ticket.id);
+
+        const orderTicket = orderTickets[0];
+        assert.deepStrictEqual(orderTicket, {
+            orderId: successes[0].json.id,
+            ticketId: ticket.id,
+        });
+
+        const order = successes[0].json;
+        assert.ok(order.customerId);
+        assert.ok(order.status);
+        assert.ok(order.createdAt);
+
+        const get = await typedInject<OrderGetResponse>({
+            method: 'GET',
+            url: `/api/orders/${order.id}`,
+        });
+        assert.strictEqual(get.statusCode, 200);
+
+        assert.deepStrictEqual(order, get.json);
+
+        redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 0);
+    });
+
+    test('POST /api/orders creates ONE order and 9 SoldOutErrors when 10 different customers compete for the last available GA pool ticket from Redis', async () => {
+        const event = await createTestEvent();
+        const ticket = await createTestTicket({
+            eventId: event.id,
+            type: TICKET_TYPE.GA,
+        });
+        const customers: CustomersGetResponse = [];
+        for (let i = 0; i < 10; i++) {
+            customers.push(await getTestCustomer(i));
+        }
+
+        const inventoryKey = redis.CacheKeys.gaPool(event.id);
+        let redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 1);
+
+        const requests = Array.from({ length: customers.length }, (_, i) => {
+            const postPayload: OrderCreateRequest = {
+                customerId: customers[i].id,
+                orderItems: [
+                    {
+                        eventId: event.id,
+                        gaTicketQuantity: 1,
+                        seatedTicketIds: [],
+                    },
+                ],
+            };
+
+            return typedInject<OrderTimestamped>({
+                method: 'POST',
+                url: '/api/orders',
+                payload: postPayload,
+            });
+        });
+
+        const responses = await Promise.all(requests);
+
+        const successes = responses.filter((r) => r.statusCode === 201);
+        const failures = responses.filter((r) => r.statusCode !== 201);
+
+        assert.strictEqual(
+            successes.length,
+            1,
+            'Exactly one OrderCreateRequest should succeed'
+        );
+        assert.strictEqual(
+            failures.length,
+            customers.length - 1,
             'All other competing OrderCreateRequests should be rejected'
         );
 
@@ -107,7 +198,7 @@ describe('Orders API Integration Tests', () => {
 
         assert.deepStrictEqual(order, get.json);
 
-        const redisStockCount = await redis.getPoolByKey(inventoryKey);
+        redisStockCount = await redis.getPoolByKey(inventoryKey);
         assert.strictEqual(redisStockCount, 0);
     });
 });

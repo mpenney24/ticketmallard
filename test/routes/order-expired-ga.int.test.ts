@@ -5,10 +5,10 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../../src/db';
 import {
-    Order,
     OrderCreateRequest,
     OrderGetRequest,
     OrderGetResponse,
+    OrderTimestamped,
 } from '../../src/db/schemas/order/schemas.db';
 import { ORDER_STATUS, tableOrders } from '../../src/db/schemas/order/table.db';
 import { OrderTicket } from '../../src/db/schemas/order-ticket/schemas.db';
@@ -33,7 +33,8 @@ describe('Orders API Integration Tests', () => {
         const customer = await getTestCustomer(0);
 
         const inventoryKey = redis.CacheKeys.gaPool(event.id);
-        await redis.setPoolByKey(inventoryKey, [ticket.id]);
+        let redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 1);
 
         const postPayload: OrderCreateRequest = {
             customerId: customer.id,
@@ -46,7 +47,7 @@ describe('Orders API Integration Tests', () => {
             ],
         };
 
-        const post = await typedInject<Order>({
+        const post = await typedInject<OrderTimestamped>({
             method: 'POST',
             url: '/api/orders',
             payload: postPayload,
@@ -85,7 +86,7 @@ describe('Orders API Integration Tests', () => {
 
         assert.deepStrictEqual(order, get.json);
 
-        const redisStockCount = await redis.getPoolByKey(inventoryKey);
+        redisStockCount = await redis.getPoolByKey(inventoryKey);
         assert.strictEqual(redisStockCount, 0);
 
         await waitUntil(async () => {
@@ -119,7 +120,7 @@ describe('Orders API Integration Tests', () => {
         assert.ok(emptyOrderTickets);
         assert.strictEqual(emptyOrderTickets.length, 0);
 
-        const newRedisStockCount = await redis.getPoolByKey(inventoryKey);
-        assert.strictEqual(newRedisStockCount, 1);
+        redisStockCount = await redis.getPoolByKey(inventoryKey);
+        assert.strictEqual(redisStockCount, 1);
     });
 });

@@ -6,15 +6,25 @@ import { createNewEvent } from '../helpers';
 async function seed() {
     console.log('🌱 Seeding Ticketmallard database...');
 
-    const customers = await db
-        .insert(tableCustomers)
-        .values([{ email: 'mitch@duckmail.com' }, { email: 'zoe@dogmail.com' }])
-        .returning();
+    const customerInserts = [];
+    for (let i = 0; i < 10; i++) {
+        customerInserts.push({ email: `mitch${i}@duckmail.com` });
+    }
 
-    const event = (await db.insert(tableEvents).values(createNewEvent).returning())[0];
+    const customers = await db.insert(tableCustomers).values(customerInserts).returning();
+
+    const event = (
+        await db
+            .insert(tableEvents)
+            .values({
+                ...createNewEvent,
+                startDateTime: new Date(createNewEvent.startDateTime),
+            })
+            .returning()
+    )[0];
 
     console.log('✅ Seed complete!');
-    console.log(`Test Customers: ${customers[0].email}, ${customers[1].email}`);
+    console.log(`Test Customers(2): ${customers[0].email}, ${customers[1].email}`);
     console.log(`Test Event ID: ${event.id}`);
     process.exit(0);
 }

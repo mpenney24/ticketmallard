@@ -10,11 +10,15 @@ import {
     OrderExpireWebhookRequest,
     OrderExpireWebhookResponse,
     OrderGetRequest,
+    OrderGetResponse,
+    orderGetResponseSchema,
     OrderItem,
     OrderItemsReservedByEvent,
     OrderPayRequest,
     OrderPayResponse,
     OrdersGetRequest,
+    OrdersGetResponse,
+    orderTimestampedObjectSchema,
     OrderUpdateRequest,
     OrderUpdateResponse,
     orderUpdateResponseSchema,
@@ -28,12 +32,11 @@ import { getQstash } from '../utils/qstash';
 import * as redis from '../utils/redis';
 
 interface OrderOptions {
-    idempotencyKey?: string;
     extraConditions?: SQL[];
     extraInsertions?: [{}];
 }
 
-export async function getOrder(request: OrderGetRequest) {
+export async function getOrder(request: OrderGetRequest): Promise<OrderGetResponse> {
     const { id } = request;
 
     const [order] = await db
@@ -46,10 +49,10 @@ export async function getOrder(request: OrderGetRequest) {
         throw new NotFoundError('Order');
     }
 
-    return order;
+    return orderGetResponseSchema.parse(order);
 }
 
-export async function getOrders(request: OrdersGetRequest) {
+export async function getOrders(request: OrdersGetRequest): Promise<OrdersGetResponse> {
     const conditions = buildConditions(tableOrders, request);
 
     const rows = await db
@@ -61,15 +64,15 @@ export async function getOrders(request: OrdersGetRequest) {
         .leftJoin(tableOrderTickets, eq(tableOrders.id, tableOrderTickets.orderId))
         .where(conditions.length ? and(...conditions) : undefined);
 
-    const map = new Map<
-        string,
-        typeof tableOrders.$inferSelect & { orderTicketIds: string[] }
-    >();
+    const map = new Map<string, OrderGetResponse & { orderTicketIds: string[] }>();
 
     for (const row of rows) {
         let entry = map.get(row.order.id);
         if (!entry) {
-            entry = { ...row.order, orderTicketIds: [] };
+            entry = {
+                ...orderTimestampedObjectSchema.parse(row.order),
+                orderTicketIds: [],
+            };
             map.set(row.order.id, entry);
         }
         if (row.ticketId) {
@@ -107,7 +110,7 @@ export async function createOrder(
 
         await tx.insert(tableOrderTickets).values(tickets);
 
-        return newOrder;
+        return orderUpdateResponseSchema.parse(newOrder);
     });
 
     const expireOrderPayload: OrderExpireWebhookRequest = {
@@ -122,36 +125,29 @@ export async function createOrder(
         delay: 1,
     });
 
-    if (opts?.idempotencyKey) {
-        await redis.setIdempotency(opts.idempotencyKey, { statusCode: 201, body: order });
-    }
-
     return order;
 }
 
 export async function updateOrder(
     request: OrderUpdateRequest,
     opts?: OrderOptions
-): Promise<OrderUpdateResponse> {
+): Promise<OrderUpdateResponse | null> {
     const { id, status } = request;
     const conditions: SQL[] = [eq(tableOrders.id, id), ...(opts?.extraConditions || [])];
 
-    const updatedOrder: OrderUpdateResponse = await db.transaction(async (tx) => {
+    const updatedOrder: OrderUpdateResponse | null = await db.transaction(async (tx) => {
         const [updated] = await tx
             .update(tableOrders)
-            .set({ status, updatedAt: new Date() })
+            .set({ status })
             .where(and(...conditions))
             .returning();
 
+        if (!updated) {
+            return null;
+        }
+
         return orderUpdateResponseSchema.parse(updated);
     });
-
-    if (opts?.idempotencyKey) {
-        await redis.setIdempotency(opts.idempotencyKey, {
-            statusCode: 201,
-            body: updatedOrder,
-        });
-    }
 
     return updatedOrder;
 }
@@ -163,50 +159,50 @@ export async function expireOrder(
 
     const extraConditions: SQL[] = [eq(tableOrders.status, ORDER_STATUS.PENDING)];
 
-    try {
-        const updatedOrder = await updateOrder({ id, status }, { extraConditions });
-
-        await db
-            .delete(tableOrderTickets)
-            .where(eq(tableOrderTickets.orderId, updatedOrder.id));
-
-        await releaseOrderItemsViaRedis(orderItems);
-
-        return { ...updatedOrder, success: true };
-    } catch (error) {
+    const updatedOrder = await updateOrder({ id, status }, { extraConditions });
+    if (!updatedOrder) {
         return {
             success: false,
             message: `Could not expire order id ${id}. This may be due to race conditions. Investigate the order and orderTickets tables to confirm`,
         };
     }
+
+    await db.delete(tableOrderTickets).where(eq(tableOrderTickets.orderId, id));
+
+    const { released, notReleased } = await releaseOrderItemsViaRedis(orderItems);
+    if (notReleased.length > 1) {
+        return {
+            success: false,
+            message: `Not all tickets were released for an order expiry request, order id ${id}. This may be due to race conditions. 
+                Investigate the following tickets: released:[${released.join(', ')}], notReleased:[${notReleased.join(', ')}]`,
+        };
+    }
+
+    return {
+        success: true,
+    };
 }
 
-export async function payOrder(
-    request: OrderPayRequest,
-    opts: OrderOptions
-): Promise<OrderPayResponse> {
+export async function payOrder(request: OrderPayRequest): Promise<OrderPayResponse> {
     const { id, status } = request;
 
     const extraConditions: SQL[] = [eq(tableOrders.status, ORDER_STATUS.PENDING)];
 
-    try {
-        const updatedOrder = await updateOrder(
-            { id, status },
-            { ...opts, extraConditions }
-        );
+    const updatedOrder = await updateOrder({ id, status }, { extraConditions });
 
-        await getQstash().publishJSON({
-            url: `${process.env.APP_URL}/api/orders/complete`,
-            body: { id: updatedOrder.id },
-        });
-
-        return { ...updatedOrder, success: true };
-    } catch (error) {
+    if (!updatedOrder) {
         return {
             success: false,
-            message: `Could not pay order id ${id}. The order may have expired. Investigate the order table to confirm`,
+            message: `Could not pay order id ${id}. The order may have expired. Please try placing the order again before trying to pay`,
         };
     }
+
+    await getQstash().publishJSON({
+        url: `${process.env.APP_URL}/api/orders/complete`,
+        body: { id: updatedOrder.id },
+    });
+
+    return { success: true };
 }
 
 export async function completeOrder(
@@ -262,9 +258,16 @@ async function reserveOrderItemsViaRedis(orderItems: OrderItem[]) {
 }
 
 async function releaseOrderItemsViaRedis(orderItemsByEvent: OrderItemsReservedByEvent[]) {
+    const released = [],
+        notReleased = [];
     for (const item of orderItemsByEvent) {
-        await redis.releaseMixedCart(item.eventId, item.orderTicketIds);
+        const result = await redis.releaseMixedCart(item.eventId, item.orderTicketIds);
+
+        released.push(...result.released);
+        notReleased.push(...result.notReleased);
     }
+
+    return { released, notReleased };
 }
 
 async function markOrderItemsAsSoldViaRedis(ticketIdsByEvent: Map<string, string[]>) {

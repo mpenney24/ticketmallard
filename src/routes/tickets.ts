@@ -8,7 +8,6 @@ import {
     ticketsGetRequestSchema,
     ticketsGetResponseSchema,
 } from '../db/schemas/ticket/schemas.db';
-import { idempotencyHook } from '../hooks/idempotency.hook';
 import { createTicket, getTicket, getTickets } from '../services/ticket.service';
 
 const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -48,7 +47,6 @@ const ticketRoutes: FastifyPluginAsyncZod = async (fastify) => {
                 body: ticketCreateSchema,
                 response: { 201: ticketCreateResponseSchema },
             },
-            preHandler: [idempotencyHook],
         },
         async (request, reply) => {
             return reply.code(201).send(await createTicket(request.body));

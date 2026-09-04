@@ -2,7 +2,6 @@ import assert from 'node:assert';
 import { describe, mock, test } from 'node:test';
 
 import {
-    Order,
     OrderCreateRequest,
     OrderExpireWebhookRequest,
     OrderExpireWebhookResponse,
@@ -11,6 +10,7 @@ import {
     OrderItemsReservedByEvent,
     OrderPayRequest,
     OrderPayResponse,
+    OrderTimestamped,
 } from '../../src/db/schemas/order/schemas.db';
 import { ORDER_STATUS } from '../../src/db/schemas/order/table.db';
 import { TICKET_STATUS } from '../../src/db/schemas/ticket/table.db';
@@ -45,7 +45,7 @@ describe('Orders API Integration Tests', () => {
             ],
         };
 
-        const post = await typedInject<Order>({
+        const post = await typedInject<OrderTimestamped>({
             method: 'POST',
             url: '/api/orders',
             payload: postPayload,
@@ -65,17 +65,15 @@ describe('Orders API Integration Tests', () => {
             status: ORDER_STATUS.PAID,
         };
 
-        const postUpdate = await typedInject<Order>({
+        const postUpdate = await typedInject<OrderPayResponse>({
             method: 'PATCH',
             url: '/api/orders/pay',
             payload: postUpdatePayload,
         });
         assert.strictEqual(post.statusCode, 201);
 
-        const updatedOrder = postUpdate.json;
-        assert.ok(updatedOrder.customerId);
-        assert.ok(updatedOrder.status);
-        assert.ok(updatedOrder.createdAt);
+        const orderPayResult = postUpdate.json;
+        assert.equal(orderPayResult.success, true);
 
         let newRedisStock;
 
@@ -168,7 +166,8 @@ describe('Orders API Integration Tests', () => {
         const customer = await getTestCustomer(0);
 
         const inventoryKey = redis.CacheKeys.seatedTicket(event.id, ticket.id);
-        await redis.setByKey(inventoryKey, TICKET_STATUS.AVAILABLE);
+        let redisStock = await redis.getByKey(inventoryKey);
+        assert.strictEqual(redisStock, TICKET_STATUS.AVAILABLE);
 
         const postPayload: OrderCreateRequest = {
             customerId: customer.id,
@@ -181,7 +180,7 @@ describe('Orders API Integration Tests', () => {
             ],
         };
 
-        const post = await typedInject<Order>({
+        const post = await typedInject<OrderTimestamped>({
             method: 'POST',
             url: '/api/orders',
             payload: postPayload,
@@ -193,7 +192,7 @@ describe('Orders API Integration Tests', () => {
         assert.ok(order.status);
         assert.ok(order.createdAt);
 
-        const redisStock = await redis.getByKey(inventoryKey);
+        redisStock = await redis.getByKey(inventoryKey);
         assert.strictEqual(redisStock, TICKET_STATUS.RESERVED);
 
         // waiting until order has already expired before trying to pay
@@ -209,11 +208,11 @@ describe('Orders API Integration Tests', () => {
             url: '/api/orders/pay',
             payload: postUpdatePayload,
         });
-        assert.strictEqual(postUpdate.statusCode, 401);
+        assert.strictEqual(postUpdate.statusCode, 409);
         assert.strictEqual(postUpdate.json.success, false);
         assert.strictEqual(
             postUpdate.json.message,
-            `Could not pay order id ${order.id}. The order may have expired. Investigate the order table to confirm`
+            `Could not pay order id ${order.id}. The order may have expired. Please try placing the order again before trying to pay`
         );
     });
 });

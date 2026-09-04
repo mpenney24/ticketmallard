@@ -1,12 +1,24 @@
-import { createSelectSchema } from 'drizzle-orm/zod';
+import {
+    createInsertSchema,
+    createSelectSchema,
+    createUpdateSchema,
+} from 'drizzle-orm/zod';
 import z from 'zod';
 
-import { createInsertSchema, createUpdateSchema } from '../drizzleFactories';
 import { ORDER_STATUS, tableOrders } from './table.db';
 
 // OBJECT
 
-export const orderObjectSchema = createSelectSchema(tableOrders);
+export const orderTimestampedObjectSchema = createSelectSchema(tableOrders).extend({
+    createdAt: z.coerce.date(),
+    updatedAt: z.coerce.date(),
+});
+export type OrderTimestamped = z.infer<typeof orderTimestampedObjectSchema>;
+
+export const orderObjectSchema = orderTimestampedObjectSchema.omit({
+    createdAt: true,
+    updatedAt: true,
+});
 export type Order = z.infer<typeof orderObjectSchema>;
 
 // -- CREATE
@@ -16,7 +28,6 @@ const orderItemSchema = z.object({
     gaTicketQuantity: z.number().int().nonnegative().default(0),
     seatedTicketIds: z.array(z.uuid('Ticket id format must be uuid')).default([]),
 });
-
 export type OrderItem = z.infer<typeof orderItemSchema>;
 
 export const orderItemsReservedByEvent = orderItemSchema
@@ -40,7 +51,7 @@ export const orderCreateSchema = createInsertSchema(tableOrders)
     });
 export type OrderCreateRequest = z.infer<typeof orderCreateSchema>;
 
-export const orderCreateResponseSchema = orderObjectSchema;
+export const orderCreateResponseSchema = orderTimestampedObjectSchema.required();
 export type OrderCreateResponse = z.infer<typeof orderCreateResponseSchema>;
 
 // -- UPDATE
@@ -56,9 +67,7 @@ export const orderUpdateSchema = createUpdateSchema(tableOrders, {
     .required();
 export type OrderUpdateRequest = z.infer<typeof orderUpdateSchema>;
 
-export const orderUpdateResponseSchema = orderObjectSchema.extend({
-    updatedAt: z.date().default(new Date()),
-});
+export const orderUpdateResponseSchema = orderTimestampedObjectSchema.required();
 export type OrderUpdateResponse = z.infer<typeof orderUpdateResponseSchema>;
 
 // -- EXPIRE
@@ -71,16 +80,16 @@ export const orderExpireRequestSchema = orderUpdateSchema
     .required();
 export type OrderExpireWebhookRequest = z.infer<typeof orderExpireRequestSchema>;
 
-export const orderExpireResponse200Schema = orderUpdateResponseSchema.extend({
+export const orderExpireResponse200Schema = z.object({
     success: z.literal(true),
 });
-export const orderExpireResponse401Schema = z.object({
+export const orderExpireResponse409Schema = orderExpireResponse200Schema.extend({
     success: z.literal(false),
     message: z.string(),
 });
 export const orderExpireResponse200RunThroughSchema = z.union([
     orderExpireResponse200Schema,
-    orderExpireResponse401Schema,
+    orderExpireResponse409Schema,
 ]);
 export type OrderExpireWebhookResponse = z.infer<
     typeof orderExpireResponse200RunThroughSchema
@@ -95,19 +104,19 @@ export const orderPaySchema = orderUpdateSchema
     .required();
 export type OrderPayRequest = z.infer<typeof orderPaySchema>;
 
-export const orderPayResponse200Schema = orderObjectSchema.extend({
+export const orderPayResponse200Schema = z.object({
     success: z.literal(true),
 });
-export const orderPayResponse401Schema = z.object({
+export const orderPayResponse409Schema = orderPayResponse200Schema.extend({
     success: z.literal(false),
     message: z.string(),
 });
 export type OrderPayResponse =
-    z.infer<typeof orderPayResponse200Schema> | z.infer<typeof orderPayResponse401Schema>;
+    z.infer<typeof orderPayResponse200Schema> | z.infer<typeof orderPayResponse409Schema>;
 
 // -- COMPLETED
 
-export const orderCompleteRequestSchema = createSelectSchema(tableOrders).pick({
+export const orderCompleteRequestSchema = orderObjectSchema.pick({
     id: true,
 });
 export type OrderCompleteWebhookRequest = z.infer<typeof orderCompleteRequestSchema>;
@@ -116,27 +125,26 @@ export const orderCompleteResponse200Schema = z.object({
     success: z.literal(true),
     message: z.string().optional(),
 });
-
 export type OrderCompleteWebhookResponse = z.infer<typeof orderCompleteResponse200Schema>;
 
 // -- GET/:id
 
-export const orderGetRequestSchema = createSelectSchema(tableOrders).pick({ id: true });
+export const orderGetRequestSchema = orderObjectSchema.pick({ id: true });
 export type OrderGetRequest = z.infer<typeof orderGetRequestSchema>;
 
-export const orderGetResponseSchema = orderObjectSchema;
+export const orderGetResponseSchema = orderTimestampedObjectSchema;
 export type OrderGetResponse = z.infer<typeof orderGetResponseSchema>;
 
 // -- GET
 
-export const ordersGetRequestSchema = createSelectSchema(tableOrders)
-    .omit({ createdAt: true, updatedAt: true })
-    .partial();
+export const ordersGetRequestSchema = orderObjectSchema.partial();
 export type OrdersGetRequest = z.infer<typeof ordersGetRequestSchema>;
 
 export const ordersGetResponseSchema = z.array(
-    orderObjectSchema.extend({
-        orderTicketIds: z.array(z.uuid()),
-    })
+    orderTimestampedObjectSchema
+        .extend({
+            orderTicketIds: z.array(z.uuid()),
+        })
+        .required()
 );
 export type OrdersGetResponse = z.infer<typeof ordersGetResponseSchema>;

@@ -1,12 +1,18 @@
-import { createSelectSchema } from 'drizzle-orm/zod';
+import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 import z from 'zod';
 
-import { createInsertSchema } from '../drizzleFactories';
 import { tableTickets, TICKET_TYPE } from './table.db';
 
 // OBJECT
 
-export const ticketObjectSchema = createSelectSchema(tableTickets);
+export const ticketTimestampedObjectSchema = createSelectSchema(tableTickets).extend({
+    createdAt: z.coerce.date(),
+});
+export type TicketTimestamped = z.infer<typeof ticketTimestampedObjectSchema>;
+
+export const ticketObjectSchema = ticketTimestampedObjectSchema.omit({
+    createdAt: true,
+});
 export type Ticket = z.infer<typeof ticketObjectSchema>;
 
 // -- CREATE
@@ -19,22 +25,20 @@ export const ticketCreateSchema = createInsertSchema(tableTickets, {
 });
 export type TicketCreateRequest = z.infer<typeof ticketCreateSchema>;
 
-export const ticketCreateResponseSchema = ticketObjectSchema;
+export const ticketCreateResponseSchema = ticketTimestampedObjectSchema;
 export type TicketCreateResponse = z.infer<typeof ticketCreateResponseSchema>;
 
 // -- GET/:id
 
-export const ticketGetRequestSchema = createSelectSchema(tableTickets).pick({ id: true });
+export const ticketGetRequestSchema = ticketObjectSchema.pick({ id: true });
 export type TicketGetRequest = z.infer<typeof ticketGetRequestSchema>;
 
-export const ticketGetResponseSchema = ticketObjectSchema;
+export const ticketGetResponseSchema = ticketTimestampedObjectSchema;
 export type TicketGetResponse = z.infer<typeof ticketGetResponseSchema>;
 
 // -- GET/
 
-export const ticketsGetRequestSchema = createSelectSchema(tableTickets)
-    .omit({ createdAt: true })
-    .partial();
+export const ticketsGetRequestSchema = ticketObjectSchema.partial();
 export type TicketsGetRequest = z.infer<typeof ticketsGetRequestSchema>;
 
 const gaTicketSchema = ticketObjectSchema
@@ -43,7 +47,7 @@ const gaTicketSchema = ticketObjectSchema
     })
     .omit({ id: true });
 
-const standardTicketSchema = ticketObjectSchema.extend({
+const standardTicketSchema = ticketTimestampedObjectSchema.extend({
     type: z.literal(TICKET_TYPE.SEATED),
 });
 

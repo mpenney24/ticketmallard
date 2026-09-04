@@ -36,17 +36,10 @@ export async function getTickets(request: TicketsGetRequest) {
         .where(conditions.length ? and(...conditions) : undefined);
 }
 
-export async function createTicket(
-    request: TicketCreateRequest,
-    idempotencyKey?: string
-) {
+export async function createTicket(request: TicketCreateRequest) {
     const [ticket] = await db.insert(tableTickets).values(request).returning();
 
     await addTicketToRedis(request.eventId, ticket.id, ticket.type);
-
-    if (idempotencyKey) {
-        await redis.setIdempotency(idempotencyKey, { statusCode: 201, body: ticket });
-    }
 
     return ticket;
 }

@@ -37,7 +37,7 @@ export async function waitUntil(
 
 export const createNewEvent: EventCreateRequest = {
     title: 'Duck Concert 2026',
-    startDateTime: FIXED_DATE,
+    startDateTime: FIXED_DATE.toISOString(),
 };
 
 export const createNewTicket: (event: Event) => TicketCreateRequest = (event) => {
@@ -54,6 +54,7 @@ export const createTestEvent = async (payload: EventCreateRequest = createNewEve
         await typedInject<Event>({
             method: 'POST',
             url: '/api/events',
+            headers: { 'x-bypass-idempotency': 'true' },
             payload,
         })
     ).json;
@@ -70,6 +71,7 @@ export const createTestTicket = async (request?: Partial<TicketCreateRequest>) =
         await typedInject<Ticket>({
             method: 'POST',
             url: '/api/tickets',
+            headers: { 'x-bypass-idempotency': 'true' },
             payload,
         })
     ).json;
@@ -80,6 +82,7 @@ export const createTestOrder = async (payload: OrderCreateRequest) => {
         await typedInject<Order>({
             method: 'POST',
             url: '/api/orders',
+            headers: { 'x-bypass-idempotency': 'true' },
             payload,
         })
     ).json;

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const customer = {
@@ -5,6 +6,6 @@ const customer = {
     email: text('email').notNull().unique(),
     createdAt: timestamp('created_at', { mode: 'date', withTimezone: true })
         .notNull()
-        .defaultNow(),
+        .default(sql`now()`),
 };
 export const tableCustomers = pgTable('customers', customer);

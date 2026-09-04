@@ -5,12 +5,12 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '../../src/db';
 import {
-    Order,
     OrderCompleteWebhookRequest,
     OrderCompleteWebhookResponse,
     OrderCreateRequest,
     OrderGetRequest,
     OrderGetResponse,
+    OrderTimestamped,
 } from '../../src/db/schemas/order/schemas.db';
 import { OrderTicket } from '../../src/db/schemas/order-ticket/schemas.db';
 import { tableOrderTickets } from '../../src/db/schemas/order-ticket/table.db';
@@ -38,9 +38,11 @@ describe('Orders API Integration Tests', () => {
             event.id,
             seatedTicket.id
         );
-        await redis.setByKey(seatedInventoryKey, TICKET_STATUS.AVAILABLE);
+        let redisSeatedStock = await redis.getByKey(seatedInventoryKey);
+        assert.strictEqual(redisSeatedStock, TICKET_STATUS.AVAILABLE);
         const gaInventoryKey = redis.CacheKeys.gaPool(event.id);
-        await redis.setPoolByKey(gaInventoryKey, [gaTicket.id]);
+        let redisGaStockCount = await redis.getPoolByKey(gaInventoryKey);
+        assert.strictEqual(redisGaStockCount, 1);
 
         const postPayload: OrderCreateRequest = {
             customerId: customer.id,
@@ -53,7 +55,7 @@ describe('Orders API Integration Tests', () => {
             ],
         };
 
-        const post = await typedInject<Order>({
+        const post = await typedInject<OrderTimestamped>({
             method: 'POST',
             url: '/api/orders',
             payload: postPayload,
@@ -91,9 +93,9 @@ describe('Orders API Integration Tests', () => {
 
         assert.deepStrictEqual(order, get.json);
 
-        const redisSeatedStock = await redis.getByKey(seatedInventoryKey);
+        redisSeatedStock = await redis.getByKey(seatedInventoryKey);
         assert.strictEqual(redisSeatedStock, TICKET_STATUS.RESERVED);
-        const redisGaStockCount = await redis.getPoolByKey(gaInventoryKey);
+        redisGaStockCount = await redis.getPoolByKey(gaInventoryKey);
         assert.strictEqual(redisGaStockCount, 0);
     });
 
