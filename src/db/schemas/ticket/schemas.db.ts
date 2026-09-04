@@ -41,7 +41,7 @@ export type TicketGetResponse = z.infer<typeof ticketGetResponseSchema>;
 export const ticketsGetRequestSchema = ticketObjectSchema.partial();
 export type TicketsGetRequest = z.infer<typeof ticketsGetRequestSchema>;
 
-const gaTicketSchema = ticketObjectSchema
+const gaTicketSchema = ticketTimestampedObjectSchema
     .extend({
         type: z.literal(TICKET_TYPE.GA),
     })

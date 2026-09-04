@@ -276,6 +276,11 @@ export async function getIdempotency(
     return JSON.parse(cached);
 }
 
+export async function clearIdempotency(idempotencyKey: string | undefined) {
+    if (!idempotencyKey) return;
+    await redis.del(CacheKeys.idempotency(idempotencyKey));
+}
+
 export async function getIdempotencyLock(
     idempotencyKey: string | undefined,
     lockToken: string

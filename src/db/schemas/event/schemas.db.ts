@@ -43,7 +43,16 @@ export type EventGetResponse = z.infer<typeof eventGetResponseSchema>;
 // -- GET/
 
 export const eventsGetRequestSchema = eventObjectSchema
-    .omit({ description: true })
+    .pick({ id: true, title: true })
+    .extend({
+        startDateTime: z
+            .string()
+            .regex(/^\d{4}(-\d{2}(-\d{2}([ T]\d{2}:\d{2}:\d{2})?)?)?$/, {
+                message:
+                    'Invalid date format, use "YYYY", "YYYY-MM", "YYYY-MM-DD", or "YYYY-MM-DD HH:mm:ss"',
+            })
+            .optional(),
+    })
     .partial();
 export type EventsGetRequest = z.infer<typeof eventsGetRequestSchema>;
 

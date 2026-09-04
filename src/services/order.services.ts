@@ -18,6 +18,7 @@ import {
     OrderPayResponse,
     OrdersGetRequest,
     OrdersGetResponse,
+    OrderTimestamped,
     orderTimestampedObjectSchema,
     OrderUpdateRequest,
     OrderUpdateResponse,
@@ -34,6 +35,10 @@ import * as redis from '../utils/redis';
 interface OrderOptions {
     extraConditions?: SQL[];
     extraInsertions?: [{}];
+}
+
+interface OrderIdempotency {
+    idempotencyKey: string;
 }
 
 export async function getOrder(request: OrderGetRequest): Promise<OrderGetResponse> {
@@ -85,43 +90,53 @@ export async function getOrders(request: OrdersGetRequest): Promise<OrdersGetRes
 
 export async function createOrder(
     request: OrderCreateRequest,
+    cacheKeys: OrderIdempotency,
     opts?: OrderOptions
 ): Promise<OrderCreateResponse> {
     const { customerId } = request;
-    const orderItems: OrderItemsReservedByEvent[] = await reserveOrderItemsViaRedis(
-        request.orderItems
-    );
+    const orderItemsByEvent: OrderItemsReservedByEvent[] =
+        await reserveOrderItemsViaRedis(request.orderItems);
 
-    const order = await db.transaction(async (tx) => {
-        const [newOrder] = await tx
-            .insert(tableOrders)
-            .values({
-                customerId,
-                ...opts?.extraInsertions,
-            })
-            .returning();
+    let order: OrderTimestamped;
 
-        const tickets: OrderTicketCreateRequest[] = orderItems
-            .flatMap((orderItem) => orderItem.orderTicketIds)
-            .map((ticketId) => ({
-                orderId: newOrder.id,
-                ticketId,
-            }));
+    try {
+        order = await db.transaction(async (tx) => {
+            const [newOrder] = await tx
+                .insert(tableOrders)
+                .values({
+                    customerId,
+                    ...opts?.extraInsertions,
+                })
+                .returning();
 
-        await tx.insert(tableOrderTickets).values(tickets);
+            const tickets: OrderTicketCreateRequest[] = orderItemsByEvent
+                .flatMap((orderItem) => orderItem.orderTicketIds)
+                .map((ticketId) => ({
+                    orderId: newOrder.id,
+                    ticketId,
+                }));
 
-        return orderUpdateResponseSchema.parse(newOrder);
-    });
+            await tx.insert(tableOrderTickets).values(tickets);
+
+            return orderUpdateResponseSchema.parse(newOrder);
+        });
+    } catch (error) {
+        await releaseOrderItemsViaRedis(orderItemsByEvent);
+        throw error;
+    }
 
     const expireOrderPayload: OrderExpireWebhookRequest = {
         id: order.id,
         status: ORDER_STATUS.EXPIRED,
-        orderItems,
+        orderItems: orderItemsByEvent,
     };
 
     await getQstash().publishJSON({
         url: `${process.env.APP_URL}/api/orders/expire`,
         body: expireOrderPayload,
+        headers: {
+            'x-idempotency-key': cacheKeys.idempotencyKey,
+        },
         delay: 1,
     });
 

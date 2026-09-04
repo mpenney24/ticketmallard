@@ -46,7 +46,16 @@ export const orderCreateSchema = createInsertSchema(tableOrders)
     })
     .extend({
         orderItems: z
-            .array(orderItemSchema)
+            .array(
+                orderItemSchema.refine(
+                    (data) =>
+                        data.gaTicketQuantity > 0 || data.seatedTicketIds.length > 0,
+                    {
+                        message:
+                            'Cart must contain a number of general admission tickets, or seated ticket ids, or both',
+                    }
+                )
+            )
             .min(1, 'Order must contain tickets for at least one event'),
     });
 export type OrderCreateRequest = z.infer<typeof orderCreateSchema>;

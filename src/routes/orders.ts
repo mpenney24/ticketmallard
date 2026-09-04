@@ -64,7 +64,11 @@ const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
             },
         },
         async (request, reply) => {
-            return reply.code(201).send(await createOrder(request.body));
+            return reply.code(201).send(
+                await createOrder(request.body, {
+                    idempotencyKey: request.idempotencyKey!,
+                })
+            );
         }
     );
 };

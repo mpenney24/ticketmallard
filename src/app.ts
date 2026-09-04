@@ -1,5 +1,5 @@
 import rateLimit from '@fastify/rate-limit';
-import sensible, { HttpError } from '@fastify/sensible';
+import sensible from '@fastify/sensible';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastify from 'fastify';
@@ -11,8 +11,12 @@ import {
 } from 'fastify-type-provider-zod';
 
 import { db } from './db/index';
-import { mapDatabaseError } from './db/mapDatabaseErrors';
-import { DomainError } from './errors/domain.errors';
+import { globalErrorHandler } from './hooks/domain.errors.hook';
+import {
+    idempotencyOnResponse,
+    idempotencyOnSend,
+    idempotencyPreHandler,
+} from './hooks/idempotency.hook';
 import customerRoutes from './routes/customers';
 import eventRoutes from './routes/events';
 import orderRoutes from './routes/orders';
@@ -20,17 +24,6 @@ import orderCompleteRoutes from './routes/orders.complete';
 import orderExpireRoutes from './routes/orders.expire';
 import orderPayRoutes from './routes/orders.pay';
 import ticketRoutes from './routes/tickets';
-import {
-    dehydrateResponseForCache,
-    generateIdempotencyKey,
-    rehydrateResponseFromCache,
-} from './utils/idempotency';
-import {
-    getIdempotency,
-    getIdempotencyLock,
-    releaseIdempotencyLock,
-    setIdempotency,
-} from './utils/redis';
 
 declare module 'fastify' {
     interface FastifyRequest {
@@ -82,74 +75,9 @@ async function buildServer() {
     });
 
     // create (and check) cached processes with idempotency to defend against repeated POST/PATCH requests
-    server.addHook('preHandler', async (request, reply) => {
-        if (
-            request.headers['x-bypass-idempotency'] === 'true' &&
-            process.env.NODE_ENV !== 'prod'
-        ) {
-            return;
-        }
-
-        if (['POST', 'PATCH'].includes(request.method)) {
-            const idempotencyKey = generateIdempotencyKey(request.body);
-            request.idempotencyKey = idempotencyKey;
-            const cached = await getIdempotency(idempotencyKey);
-
-            if (cached) {
-                const revivedBody = rehydrateResponseFromCache(cached.body);
-                return reply.code(cached.statusCode).send(revivedBody);
-            }
-
-            const lockToken = crypto.randomUUID();
-
-            const lockAcquired = await getIdempotencyLock(idempotencyKey, lockToken);
-            if (!lockAcquired) {
-                return reply.code(409).send({ error: 'Concurrent request in progress' });
-            }
-
-            request.idempotencyLockToken = lockToken;
-        }
-    });
-
-    server.addHook('onSend', async (request, reply, payload) => {
-        if (
-            request.headers['x-bypass-idempotency'] === 'true' &&
-            process.env.NODE_ENV !== 'prod'
-        ) {
-            return;
-        }
-
-        if (
-            ['POST', 'PATCH'].includes(request.method) &&
-            reply.statusCode >= 200 &&
-            reply.statusCode < 300
-        ) {
-            const idempotencyKey = generateIdempotencyKey(request.body);
-            const body = typeof payload === 'string' ? JSON.parse(payload) : payload;
-
-            const serialized = dehydrateResponseForCache(body);
-
-            await setIdempotency(idempotencyKey, {
-                statusCode: reply.statusCode,
-                body: serialized,
-            });
-        }
-
-        return payload;
-    });
-
-    server.addHook('onResponse', async (request) => {
-        if (request.idempotencyKey && request.idempotencyLockToken) {
-            try {
-                await releaseIdempotencyLock(
-                    request.idempotencyKey,
-                    request.idempotencyLockToken
-                );
-            } catch (err) {
-                request.log.error({ err }, 'Failed to release idempotency lock');
-            }
-        }
-    });
+    server.addHook('preHandler', idempotencyPreHandler);
+    server.addHook('onSend', idempotencyOnSend);
+    server.addHook('onResponse', idempotencyOnResponse);
 
     // build swagger docs
     const customTransform = createJsonSchemaTransform({
@@ -185,31 +113,7 @@ async function buildServer() {
     });
 
     // error handling
-    server.setErrorHandler((error: HttpError, request, reply) => {
-        if (error instanceof DomainError) {
-            return reply.code(error.statusCode).send({
-                success: false,
-                message: error.message,
-            });
-        }
-
-        const mappedDbError = mapDatabaseError(error);
-        if (mappedDbError) {
-            return reply.status(mappedDbError.status).send({
-                success: false,
-                error: 'Bad Request',
-                message: mappedDbError.message,
-            });
-        }
-
-        request.log.error(error);
-
-        const statusCode = error.statusCode || 500;
-        return reply.code(statusCode).send({
-            success: false,
-            message: error.message || 'Ticketmallard Internal Server Error',
-        });
-    });
+    server.setErrorHandler(globalErrorHandler);
 
     server.get('/health', async () => {
         return { status: 'Ok 🦆' };
