@@ -7,8 +7,8 @@ import {
     orderGetResponseSchema,
     ordersGetRequestSchema,
     ordersGetResponseSchema,
-} from '../db/schemas/order/schemas.db';
-import { createOrder, getOrder, getOrders } from '../services/order.services';
+} from '../../../db/schemas/order/schemas.db';
+import { createOrder, getOrder, getOrders } from '../../../services/order.services';
 
 const orderRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(

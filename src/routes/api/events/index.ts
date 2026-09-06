@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
-import { db } from '../db';
-import { buildConditions } from '../db/buildConditions';
+import { db } from '../../../db';
+import { buildConditions } from '../../../db/buildConditions';
 import {
     eventCreateResponseSchema,
     eventCreateSchema,
@@ -10,8 +10,8 @@ import {
     eventGetResponseSchema,
     eventsGetRequestSchema,
     eventsGetResponseSchema,
-} from '../db/schemas/event/schemas.db';
-import { tableEvents } from '../db/schemas/event/table.db';
+} from '../../../db/schemas/event/schemas.db';
+import { tableEvents } from '../../../db/schemas/event/table.db';
 
 const eventRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(

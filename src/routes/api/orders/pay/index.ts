@@ -4,8 +4,8 @@ import {
     orderPayResponse200Schema,
     orderPayResponse409Schema,
     orderPaySchema,
-} from '../db/schemas/order/schemas.db';
-import { payOrder } from '../services/order.services';
+} from '../../../../db/schemas/order/schemas.db';
+import { payOrder } from '../../../../services/order.services';
 
 const orderPayRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.patch(

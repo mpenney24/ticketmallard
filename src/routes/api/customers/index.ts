@@ -1,15 +1,15 @@
 import { and, eq } from 'drizzle-orm';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 
-import { db } from '../db';
-import { buildConditions } from '../db/buildConditions';
+import { db } from '../../../db';
+import { buildConditions } from '../../../db/buildConditions';
 import {
     customerGetRequestSchema,
     customerGetResponseSchema,
     customersGetRequestSchema,
     customersGetResponseSchema,
-} from '../db/schemas/customer/schemas.db';
-import { tableCustomers } from '../db/schemas/customer/table.db';
+} from '../../../db/schemas/customer/schemas.db';
+import { tableCustomers } from '../../../db/schemas/customer/table.db';
 
 const customerRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.get(

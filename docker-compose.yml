@@ -49,6 +49,7 @@ services:
         volumes:
             - .:/app
             - node_modules_cache:/app/node_modules
+            - pnpm_store:/root/.local/share/pnpm/store
         depends_on:
             postgres:
                 condition: service_healthy
@@ -59,3 +60,4 @@ services:
 
 volumes:
     node_modules_cache:
+    pnpm_store:

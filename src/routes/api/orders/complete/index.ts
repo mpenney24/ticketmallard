@@ -3,9 +3,9 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import {
     orderCompleteRequestSchema,
     orderCompleteResponse200Schema,
-} from '../db/schemas/order/schemas.db';
-import { completeOrder } from '../services/order.services';
-import { verifyQStashSignature } from '../utils/qstash';
+} from '../../../../db/schemas/order/schemas.db';
+import { completeOrder } from '../../../../services/order.services';
+import { verifyQStashSignature } from '../../../../utils/qstash';
 
 const orderCompleteRoutes: FastifyPluginAsyncZod = async (fastify) => {
     fastify.post(

@@ -11,7 +11,7 @@ export function getQstash() {
 
         if (!token) {
             throw new Error(
-                'QSTASH_TOKEN environment variable is missing. Check your .env file or test setup.'
+                'QSTASH_TOKEN environment variable is missing. Check your .env file or test setup'
             );
         }
 
