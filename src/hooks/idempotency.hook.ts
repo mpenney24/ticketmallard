@@ -94,6 +94,9 @@ export async function idempotencyOnResponse(request: FastifyRequest) {
                 request.idempotencyKey,
                 request.idempotencyLockToken
             );
+
+            delete request.idempotencyKey;
+            delete request.idempotencyLockToken;
         } catch (err) {
             request.log.error({ err }, 'Failed to release idempotency lock');
         }

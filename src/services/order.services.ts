@@ -7,6 +7,7 @@ import {
     OrderCompleteWebhookResponse,
     OrderCreateRequest,
     OrderCreateResponse,
+    orderCreateResponseSchema,
     OrderExpireWebhookRequest,
     OrderExpireWebhookResponse,
     OrderGetRequest,
@@ -118,7 +119,7 @@ export async function createOrder(
 
             await tx.insert(tableOrderTickets).values(tickets);
 
-            return orderUpdateResponseSchema.parse(newOrder);
+            return orderCreateResponseSchema.parse(newOrder);
         });
     } catch (error) {
         await releaseOrderItemsViaRedis(orderItemsByEvent);

@@ -11,13 +11,12 @@ RUN pnpm config set strict-dep-builds false
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store && \
-    pnpm fetch
+    pnpm config set fetch-timeout 120000 && \
+    pnpm config set fetch-retry-mintimeout 20000 && \
+    pnpm config set fetch-retries 5 && \
+    pnpm install --frozen-lockfile
 
 COPY . .
-
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm config set store-dir /pnpm/store && \
-    pnpm install --offline --frozen-lockfile
 
 EXPOSE 3000
 
